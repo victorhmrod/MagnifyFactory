@@ -2,9 +2,16 @@
 
 namespace magnify::core {
 
-JobManager::JobManager(magnify::engines::IMediaEngine *engine, QObject *parent)
-    : QObject(parent), m_engine(engine) {
-    connect(m_engine, &magnify::engines::IMediaEngine::jobFinished, this, &JobManager::onEngineJobFinished);
+JobManager::JobManager(QObject *parent) : QObject(parent) {
+}
+
+void JobManager::registerEngine(magnify::engines::IMediaEngine *engine) {
+    m_engines.insert(engine->name(), engine);
+    connect(engine, &magnify::engines::IMediaEngine::jobFinished, this, &JobManager::onEngineJobFinished);
+}
+
+magnify::engines::IMediaEngine *JobManager::engineForJob(ConversionJob *job) const {
+    return m_engines.value(job->engineName(), nullptr);
 }
 
 ConversionJob *JobManager::addJob(std::unique_ptr<ConversionJob> job) {
@@ -24,7 +31,9 @@ void JobManager::removeJob(const QUuid &jobId) {
         if (m_jobs[i]->id() == jobId) {
             ConversionJob *job = m_jobs.takeAt(i);
             if (job->status() == JobStatus::Running) {
-                m_engine->cancelConversion(jobId);
+                if (auto *engine = engineForJob(job)) {
+                    engine->cancelConversion(jobId);
+                }
             }
             job->deleteLater();
             emit jobRemoved(jobId);
@@ -37,7 +46,9 @@ void JobManager::removeJob(const QUuid &jobId) {
 void JobManager::cancelJob(const QUuid &jobId) {
     if (ConversionJob *job = findJob(jobId)) {
         if (job->status() == JobStatus::Running) {
-            m_engine->cancelConversion(jobId);
+            if (auto *engine = engineForJob(job)) {
+                engine->cancelConversion(jobId);
+            }
         } else if (job->status() == JobStatus::Queued) {
             job->setStatus(JobStatus::Cancelled);
         }
@@ -116,7 +127,12 @@ void JobManager::tryStartNextJobs() {
             break;
         }
         if (job->status() == JobStatus::Queued) {
-            m_engine->startConversion(job);
+            if (auto *engine = engineForJob(job)) {
+                engine->startConversion(job);
+            } else {
+                job->setErrorMessage(QStringLiteral("No engine registered for '%1'").arg(job->engineName()));
+                job->setStatus(JobStatus::Failed);
+            }
         }
     }
 }

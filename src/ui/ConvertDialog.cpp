@@ -48,9 +48,15 @@ ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCateg
             break;
         case FormatCategory::Image:
             addFormatSection(layout, QStringLiteral("IMAGE"), FormatCategory::Image);
+            addCustomSection(layout, QStringLiteral("DOCUMENT"), {{QStringLiteral("PDF"), QStringLiteral("pdf")}});
             break;
         case FormatCategory::Pdf:
-            addFormatSection(layout, QStringLiteral("PDF"), FormatCategory::Pdf);
+            // pdftoppm (the renderer behind PDF -> image) only supports these
+            // two output formats; the general Image category list includes
+            // WebP/AVIF/etc. which it cannot produce.
+            addCustomSection(layout, QStringLiteral("IMAGE (page 1)"),
+                              {{QStringLiteral("PNG"), QStringLiteral("png")},
+                               {QStringLiteral("JPEG"), QStringLiteral("jpg")}});
             break;
         default:
             addFormatSection(layout, QStringLiteral("VIDEO"), FormatCategory::Video);
@@ -61,7 +67,17 @@ ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCateg
 }
 
 void ConvertDialog::addFormatSection(QVBoxLayout *layout, const QString &title, FormatCategory category) {
-    const auto formats = FormatRegistry::instance().formatsInCategory(category);
+    QVector<QPair<QString, QString>> formats;
+    for (const auto &descriptor : FormatRegistry::instance().formatsInCategory(category)) {
+        if (descriptor.supportsOutput) {
+            formats.append({descriptor.name, descriptor.extension});
+        }
+    }
+    addCustomSection(layout, title, formats);
+}
+
+void ConvertDialog::addCustomSection(QVBoxLayout *layout, const QString &title,
+                                      const QVector<QPair<QString, QString>> &formats) {
     if (formats.isEmpty()) {
         return;
     }
@@ -75,14 +91,11 @@ void ConvertDialog::addFormatSection(QVBoxLayout *layout, const QString &title, 
     int col = 0;
     int row = 0;
     constexpr int columns = 5;
-    for (const auto &descriptor : formats) {
-        if (!descriptor.supportsOutput) {
-            continue;
-        }
-        auto *button = new QPushButton(descriptor.name, this);
+    for (const auto &[name, ext] : formats) {
+        auto *button = new QPushButton(name, this);
         button->setProperty("class", QStringLiteral("formatButton"));
         button->setCursor(Qt::PointingHandCursor);
-        connect(button, &QPushButton::clicked, this, [this, ext = descriptor.extension]() {
+        connect(button, &QPushButton::clicked, this, [this, ext]() {
             m_selectedFormat = ext;
             accept();
         });

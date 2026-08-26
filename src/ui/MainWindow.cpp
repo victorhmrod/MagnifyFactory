@@ -23,6 +23,7 @@
 #include "core/FormatRegistry.h"
 #include "core/JobManager.h"
 #include "engines/ffmpeg/FFmpegMediaEngine.h"
+#include "engines/pdf/PdfEngine.h"
 
 using magnify::core::ConversionJob;
 using magnify::core::FormatCategory;
@@ -53,8 +54,11 @@ QString statusColor(JobStatus status) {
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
-    m_engine = std::make_unique<magnify::engines::ffmpeg::FFmpegMediaEngine>();
-    m_jobManager = std::make_unique<JobManager>(m_engine.get());
+    m_ffmpegEngine = std::make_unique<magnify::engines::ffmpeg::FFmpegMediaEngine>();
+    m_pdfEngine = std::make_unique<magnify::engines::pdf::PdfEngine>();
+    m_jobManager = std::make_unique<JobManager>();
+    m_jobManager->registerEngine(m_ffmpegEngine.get());
+    m_jobManager->registerEngine(m_pdfEngine.get());
 
     setAcceptDrops(true);
     setWindowTitle(QStringLiteral("MagnifyFactory"));
@@ -239,10 +243,13 @@ void MainWindow::enqueueFile(const QString &inputPath, const QString &targetExt)
         outputPath = outDir.filePath(inputInfo.completeBaseName() + QStringLiteral(" (converted).") + targetExt);
     }
 
+    const QString sourceExt = inputInfo.suffix().toLower();
+    const bool isPdfJob = sourceExt == QStringLiteral("pdf") || targetExt == QStringLiteral("pdf");
+
     auto job = std::make_unique<ConversionJob>(inputPath, outputPath);
-    job->setSourceFormat(inputInfo.suffix().toLower());
+    job->setSourceFormat(sourceExt);
     job->setTargetFormat(targetExt);
-    job->setEngineName(QStringLiteral("FFmpeg"));
+    job->setEngineName(isPdfJob ? QStringLiteral("PDF Tools") : QStringLiteral("FFmpeg"));
 
     m_jobManager->addJob(std::move(job));
     statusBar()->showMessage(QStringLiteral("Queued: %1 → %2").arg(inputInfo.fileName(), targetExt.toUpper()), 4000);

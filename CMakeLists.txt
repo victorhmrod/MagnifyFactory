@@ -27,6 +27,10 @@ set(MAGNIFY_ENGINE_SOURCES
     src/engines/ffmpeg/FFprobe.cpp
     src/engines/ffmpeg/FFmpegMediaEngine.h
     src/engines/ffmpeg/FFmpegMediaEngine.cpp
+    src/engines/pdf/PdfImageWriter.h
+    src/engines/pdf/PdfImageWriter.cpp
+    src/engines/pdf/PdfEngine.h
+    src/engines/pdf/PdfEngine.cpp
 )
 
 set(MAGNIFY_UI_SOURCES
@@ -68,6 +72,30 @@ if(TARGET Qt6::QWindowsIntegrationPlugin)
             "$<TARGET_FILE:Qt6::QWindowsIntegrationPlugin>"
             "$<TARGET_FILE_DIR:MagnifyFactory>/platforms/"
     )
+endif()
+
+# JPEG is not natively supported by QtGui (unlike PNG) — it needs the
+# imageformats plugin, used by the PDF Tools engine when embedding non-JPEG
+# images into a PDF. The plugin itself depends on libjpeg-turbo's runtime DLL,
+# which — unlike MagnifyFactory's own direct dependencies — isn't picked up
+# automatically since plugins are loaded dynamically, not linked at build
+# time, so it's located and copied explicitly here.
+if(TARGET Qt6::QJpegPlugin)
+    find_file(MAGNIFY_JPEG_RUNTIME_DLL NAMES jpeg62.dll PATH_SUFFIXES bin)
+    add_custom_command(TARGET MagnifyFactory POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:MagnifyFactory>/imageformats"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:Qt6::QJpegPlugin>"
+            "$<TARGET_FILE_DIR:MagnifyFactory>/imageformats/"
+    )
+    if(MAGNIFY_JPEG_RUNTIME_DLL)
+        add_custom_command(TARGET MagnifyFactory POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${MAGNIFY_JPEG_RUNTIME_DLL}"
+                "$<TARGET_FILE_DIR:MagnifyFactory>/"
+        )
+    endif()
 endif()
 
 enable_testing()

@@ -69,7 +69,8 @@ int main(int argc, char *argv[]) {
     }
 
     magnify::engines::ffmpeg::FFmpegMediaEngine engine;
-    JobManager manager(&engine);
+    JobManager manager;
+    manager.registerEngine(&engine);
     manager.setMaxConcurrentJobs(1);
 
     bool allOk = true;

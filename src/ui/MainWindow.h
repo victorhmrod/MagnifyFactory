@@ -18,6 +18,7 @@ class QStackedWidget;
 QT_END_NAMESPACE
 
 namespace magnify::engines::ffmpeg { class FFmpegMediaEngine; }
+namespace magnify::engines::pdf { class PdfEngine; }
 namespace magnify::core { class JobManager; class ConversionJob; }
 
 namespace magnify::ui {
@@ -50,7 +51,8 @@ private:
     void onCategorySelected(QListWidgetItem *current);
     void updateStatusBar();
 
-    std::unique_ptr<magnify::engines::ffmpeg::FFmpegMediaEngine> m_engine;
+    std::unique_ptr<magnify::engines::ffmpeg::FFmpegMediaEngine> m_ffmpegEngine;
+    std::unique_ptr<magnify::engines::pdf::PdfEngine> m_pdfEngine;
     std::unique_ptr<magnify::core::JobManager> m_jobManager;
 
     QListWidget *m_sidebar = nullptr;

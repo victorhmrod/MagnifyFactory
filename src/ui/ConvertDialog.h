@@ -1,7 +1,9 @@
 #pragma once
 
 #include <QDialog>
+#include <QPair>
 #include <QString>
+#include <QVector>
 
 #include "core/FormatRegistry.h"
 
@@ -24,6 +26,8 @@ public:
 
 private:
     void addFormatSection(QVBoxLayout *layout, const QString &title, magnify::core::FormatCategory category);
+    void addCustomSection(QVBoxLayout *layout, const QString &title,
+                           const QVector<QPair<QString, QString>> &formats);
 
     QString m_selectedFormat;
 };

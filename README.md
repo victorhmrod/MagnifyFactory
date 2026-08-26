@@ -28,9 +28,10 @@ reporting, and structured error messages instead of raw stderr dumps.
 
 It's built to grow: an `IMediaEngine` abstraction sits between the UI and
 FFmpeg, a `FormatRegistry` centralizes what the app knows how to convert, and
-the job system (`ConversionJob` / `JobManager`) is decoupled from both the UI
-and the engine, so new engines (images via libvips, PDF via PDFium/qpdf) can
-be added without touching existing code.
+the job system (`ConversionJob` / `JobManager`) is decoupled from the UI and
+routes each job to the right engine by name — FFmpeg for video/audio/images,
+Poppler + a minimal in-process PDF writer for PDF ↔ image — so new engines
+can be added without touching existing code.
 
 ## Features
 
@@ -47,6 +48,8 @@ be added without touching existing code.
 - **Audio**: MP3, WAV, FLAC, AAC, M4A, OGG — including audio extraction
   straight from a video file.
 - **Images**: PNG, JPEG, WebP, AVIF, BMP, TIFF, GIF.
+- **PDF ↔ image**: render a PDF's first page to PNG/JPEG (Poppler), or embed
+  an image losslessly into a single-page PDF.
 - **Output next to the source file** — no separate output folder to manage;
   converted files land beside the original.
 - **Dark, information-dense UI** — a category sidebar and a queue table, no
@@ -54,8 +57,8 @@ be added without touching existing code.
 
 ## Roadmap
 
-- [ ] PDF tools (PDF ↔ images, merge/split/compress, powered by
-      PDFium + qpdf)
+- [x] PDF ↔ image conversion
+- [ ] PDF merge/split/compress (via the `qpdf` CLI — not wired up yet)
 - [ ] Documents and archive conversion
 - [ ] Hardware-accelerated encoding (NVENC / AMF / Quick Sync)
 - [ ] Presets (YouTube, Discord, WhatsApp, Instagram, ...)
@@ -71,8 +74,10 @@ run it. It's a per-user install (no admin rights needed) with an optional
 checkbox to add *Convert with MagnifyFactory* to the Explorer right-click
 menu, and it registers an uninstaller.
 
-MagnifyFactory shells out to `ffmpeg`/`ffprobe` rather than bundling them —
-make sure both are on your `PATH` (e.g. `winget install Gyan.FFmpeg`).
+MagnifyFactory shells out to external tools rather than bundling them —
+make sure these are on your `PATH`:
+- `ffmpeg` / `ffprobe` (e.g. `winget install Gyan.FFmpeg`) for video/audio/image conversion
+- `pdftoppm` from Poppler (e.g. `winget install oschwartz10612.Poppler`) for PDF → image
 
 ## Building from source
 
@@ -85,6 +90,8 @@ make sure both are on your `PATH` (e.g. `winget install Gyan.FFmpeg`).
 - [vcpkg](https://github.com/microsoft/vcpkg)
 - [FFmpeg](https://ffmpeg.org/) (`ffmpeg` and `ffprobe` on your `PATH`) —
   MagnifyFactory shells out to these rather than linking libav directly
+- [Poppler](https://github.com/oschwartz10612/poppler-windows) (`pdftoppm`
+  on your `PATH`) for PDF → image rendering
 
 ### Get Qt6
 
@@ -166,6 +173,7 @@ Key pieces:
 | [`JobManager`](src/core/JobManager.h) | Owns the queue, enforces a concurrency limit, drives jobs against an engine. |
 | [`IMediaEngine`](src/engines/IMediaEngine.h) | Abstraction any conversion backend implements — swappable, testable in isolation. |
 | [`FFmpegCommandBuilder`](src/engines/ffmpeg/FFmpegCommandBuilder.h) | Produces `QStringList` argv, never a concatenated shell string. |
+| [`PdfEngine`](src/engines/pdf/PdfEngine.h) | PDF ↔ image via Poppler's `pdftoppm`, plus a minimal in-process PDF writer for image → PDF. |
 
 ## Contributing
 

@@ -14,3 +14,6 @@ target_link_libraries(smoke_convert PRIVATE Qt6::Core magnify_core magnify_engin
 
 add_executable(smoke_mkpath smoke_mkpath.cpp)
 target_link_libraries(smoke_mkpath PRIVATE Qt6::Core)
+
+add_executable(smoke_pdf smoke_pdf.cpp)
+target_link_libraries(smoke_pdf PRIVATE Qt6::Core Qt6::Gui magnify_core magnify_engines)

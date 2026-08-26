@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QList>
 #include <QObject>
 #include <memory>
@@ -9,13 +10,18 @@
 
 namespace magnify::core {
 
-// Owns the conversion queue and drives it against an IMediaEngine, respecting
-// a configurable concurrency limit. UI code talks only to JobManager — never
+// Owns the conversion queue and drives it against one or more IMediaEngine
+// instances (dispatched by ConversionJob::engineName()), respecting a
+// configurable concurrency limit. UI code talks only to JobManager — never
 // to an engine directly — keeping conversion logic out of widgets.
 class JobManager : public QObject {
     Q_OBJECT
 public:
-    explicit JobManager(magnify::engines::IMediaEngine *engine, QObject *parent = nullptr);
+    explicit JobManager(QObject *parent = nullptr);
+
+    // Engines must be registered before jobs targeting them are added; the
+    // name must match ConversionJob::engineName() for jobs routed to it.
+    void registerEngine(magnify::engines::IMediaEngine *engine);
 
     ConversionJob *addJob(std::unique_ptr<ConversionJob> job);
     void removeJob(const QUuid &jobId);
@@ -41,8 +47,9 @@ private:
     void tryStartNextJobs();
     void onEngineJobFinished(QUuid jobId, bool success, QString errorMessage);
     int runningJobCount() const;
+    magnify::engines::IMediaEngine *engineForJob(ConversionJob *job) const;
 
-    magnify::engines::IMediaEngine *m_engine;
+    QHash<QString, magnify::engines::IMediaEngine *> m_engines;
     QList<ConversionJob *> m_jobs; // owned via QObject parent-child ownership
     int m_maxConcurrentJobs = 2;
     bool m_queueRunning = false;
