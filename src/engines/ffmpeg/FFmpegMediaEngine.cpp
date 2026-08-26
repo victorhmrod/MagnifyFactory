@@ -1,0 +1,254 @@
+#include "FFmpegMediaEngine.h"
+
+#include "FFmpegCommandBuilder.h"
+#include "FFprobe.h"
+#include "core/FormatRegistry.h"
+
+#include <QFileInfo>
+
+using magnify::core::ConversionJob;
+using magnify::core::FormatCategory;
+using magnify::core::FormatRegistry;
+using magnify::core::JobStatus;
+
+namespace magnify::engines::ffmpeg {
+
+FFmpegMediaEngine::FFmpegMediaEngine(QObject *parent) : IMediaEngine(parent) {
+}
+
+MediaProbeResult FFmpegMediaEngine::probe(const QString &filePath) {
+    return FFprobe::probe(filePath);
+}
+
+QStringList FFmpegMediaEngine::buildArgsForJob(ConversionJob *job, const MediaProbeResult &probeResult) {
+    FFmpegCommandBuilder builder;
+    builder.setInput(job->inputPath()).setOutput(job->outputPath()).setOverwrite(true).enableProgressReporting();
+
+    const QString targetExt = job->targetFormat().toLower();
+    const FormatCategory targetCategory = FormatRegistry::instance().categoryOf(targetExt);
+    const auto &params = job->parameters();
+
+    if (targetCategory == FormatCategory::Audio) {
+        // Any container/codec -> pure audio output: drop video entirely.
+        builder.dropVideoStream();
+
+        if (targetExt == QStringLiteral("mp3")) {
+            builder.setAudioCodec(QStringLiteral("libmp3lame"));
+            builder.setAudioQuality(params.value(QStringLiteral("audioQuality"), 2).toInt());
+        } else if (targetExt == QStringLiteral("wav")) {
+            builder.setAudioCodec(QStringLiteral("pcm_s16le"));
+        } else if (targetExt == QStringLiteral("flac")) {
+            builder.setAudioCodec(QStringLiteral("flac"));
+        } else if (targetExt == QStringLiteral("aac") || targetExt == QStringLiteral("m4a")) {
+            builder.setAudioCodec(QStringLiteral("aac"));
+            builder.setAudioBitrate(params.value(QStringLiteral("audioBitrate"), "192k").toString());
+        } else if (targetExt == QStringLiteral("ogg")) {
+            builder.setAudioCodec(QStringLiteral("libvorbis"));
+        } else {
+            builder.setAudioCodec(QStringLiteral("copy"));
+        }
+
+        if (params.contains(QStringLiteral("sampleRate"))) {
+            builder.setSampleRate(params.value(QStringLiteral("sampleRate")).toInt());
+        }
+        if (params.contains(QStringLiteral("channels"))) {
+            builder.setAudioChannels(params.value(QStringLiteral("channels")).toInt());
+        }
+        return builder.build();
+    }
+
+    if (targetCategory == FormatCategory::Image) {
+        // Still-image conversion (PNG/JPEG/WebP/AVIF/BMP/TIFF/GIF/...). FFmpeg
+        // selects an appropriate encoder from the output extension by default;
+        // we only need to steer quality for the lossy formats users care about.
+        if (targetExt == QStringLiteral("jpg") || targetExt == QStringLiteral("jpeg")) {
+            builder.addExtraArgs({QStringLiteral("-q:v"),
+                                   QString::number(params.value(QStringLiteral("jpegQuality"), 2).toInt())});
+        } else if (targetExt == QStringLiteral("webp")) {
+            builder.addExtraArgs(
+                {QStringLiteral("-quality"), QString::number(params.value(QStringLiteral("quality"), 85).toInt())});
+        } else if (targetExt == QStringLiteral("avif")) {
+            builder.setVideoCodec(QStringLiteral("libaom-av1"));
+            builder.addExtraArgs({QStringLiteral("-crf"),
+                                   QString::number(params.value(QStringLiteral("crf"), 30).toInt()),
+                                   QStringLiteral("-still-picture"), QStringLiteral("1")});
+        }
+        return builder.build();
+    }
+
+    if (targetCategory == FormatCategory::Video) {
+        const QString sourceExt = job->sourceFormat().toLower();
+        const bool sourceIsH264 = probeResult.videoCodec == QStringLiteral("h264");
+        const bool sourceIsAac = probeResult.audioCodec == QStringLiteral("aac");
+
+        if (targetExt == QStringLiteral("mpeg") || targetExt == QStringLiteral("mpg")) {
+            // MPEG-1/2 does not support H.264/AAC, so this path always re-encodes.
+            builder.setVideoCodec(QStringLiteral("mpeg2video"));
+            builder.setVideoBitrate(params.value(QStringLiteral("videoBitrate"), "6000k").toString());
+            builder.setAudioCodec(QStringLiteral("mp2"));
+            builder.setAudioBitrate(QStringLiteral("192k"));
+            return builder.build();
+        }
+
+        if (targetExt == QStringLiteral("mp4") || targetExt == QStringLiteral("mkv") ||
+            targetExt == QStringLiteral("mov")) {
+            // Remux without re-encoding whenever the codecs are already compatible
+            // with the destination container (e.g. MKV H.264/AAC -> MP4).
+            const bool canStreamCopy = !params.value(QStringLiteral("forceReencode"), false).toBool() &&
+                                        sourceExt != targetExt && sourceIsH264 && sourceIsAac;
+            if (canStreamCopy) {
+                builder.copyVideoStream().copyAudioStream();
+            } else {
+                builder.setVideoCodec(params.value(QStringLiteral("videoCodec"), "libx264").toString());
+                builder.setCrf(params.value(QStringLiteral("crf"), 23).toInt());
+                builder.setAudioCodec(QStringLiteral("aac"));
+                builder.setAudioBitrate(params.value(QStringLiteral("audioBitrate"), "192k").toString());
+            }
+            return builder.build();
+        }
+
+        // Generic fallback: re-encode to H.264/AAC for any other target container.
+        builder.setVideoCodec(params.value(QStringLiteral("videoCodec"), "libx264").toString());
+        builder.setCrf(params.value(QStringLiteral("crf"), 23).toInt());
+        builder.setAudioCodec(QStringLiteral("aac"));
+        return builder.build();
+    }
+
+    // Unknown target category: pass through as a plain remux attempt.
+    builder.copyVideoStream().copyAudioStream();
+    return builder.build();
+}
+
+void FFmpegMediaEngine::startConversion(ConversionJob *job) {
+    const QUuid jobId = job->id();
+    if (m_runningJobs.contains(jobId)) {
+        return;
+    }
+
+    job->setStatus(JobStatus::Preparing);
+    const MediaProbeResult probeResult = FFprobe::probe(job->inputPath());
+    if (!probeResult.valid) {
+        job->setErrorMessage(probeResult.errorMessage);
+        job->setStatus(JobStatus::Failed);
+        emit jobFinished(jobId, false, probeResult.errorMessage);
+        return;
+    }
+
+    const QStringList args = buildArgsForJob(job, probeResult);
+
+    auto *process = new QProcess(this);
+    process->setProcessChannelMode(QProcess::SeparateChannels);
+
+    RunningJob running;
+    running.process = process;
+    running.job = job;
+    running.totalDurationSeconds = probeResult.durationSeconds;
+    running.wallClock.start();
+    m_runningJobs.insert(jobId, running);
+
+    connect(process, &QProcess::readyReadStandardOutput, this, [this, jobId]() {
+        handleProgressData(jobId);
+    });
+    connect(process, &QProcess::readyReadStandardError, this, [this, jobId]() {
+        if (auto it = m_runningJobs.find(jobId); it != m_runningJobs.end()) {
+            it->stderrBuffer += it->process->readAllStandardError();
+        }
+    });
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, jobId](int exitCode, QProcess::ExitStatus exitStatus) {
+                handleProcessFinished(jobId, exitCode, exitStatus);
+            });
+
+    job->setStatus(JobStatus::Running);
+    process->start(QStringLiteral("ffmpeg"), args);
+}
+
+void FFmpegMediaEngine::handleProgressData(const QUuid &jobId) {
+    auto it = m_runningJobs.find(jobId);
+    if (it == m_runningJobs.end()) {
+        return;
+    }
+    RunningJob &running = it.value();
+    running.progressBuffer += running.process->readAllStandardOutput();
+
+    // ffmpeg -progress writes one key=value pair per line, terminated by
+    // "progress=continue" or "progress=end" for each reporting interval.
+    int newlineIndex;
+    double outTimeSeconds = -1.0;
+    double speed = 0.0;
+
+    while ((newlineIndex = running.progressBuffer.indexOf('\n')) != -1) {
+        const QByteArray line = running.progressBuffer.left(newlineIndex).trimmed();
+        running.progressBuffer.remove(0, newlineIndex + 1);
+
+        const int eq = line.indexOf('=');
+        if (eq == -1) {
+            continue;
+        }
+        const QByteArray key = line.left(eq);
+        const QByteArray value = line.mid(eq + 1);
+
+        if (key == "out_time_ms") {
+            outTimeSeconds = value.toDouble() / 1'000'000.0;
+        } else if (key == "out_time_us") {
+            outTimeSeconds = value.toDouble() / 1'000'000.0;
+        } else if (key == "speed") {
+            QByteArray v = value;
+            v.replace("x", "");
+            speed = v.trimmed().toDouble();
+        } else if (key == "progress") {
+            const bool finished = (value == "end");
+            if (outTimeSeconds >= 0.0 && running.totalDurationSeconds > 0.0) {
+                const int percent = finished
+                    ? 100
+                    : qBound(0, static_cast<int>((outTimeSeconds / running.totalDurationSeconds) * 100.0), 100);
+                running.job->setProgressPercent(percent);
+                running.job->setSpeedFactor(speed);
+
+                qint64 eta = -1;
+                if (speed > 0.0) {
+                    const double remainingSeconds = running.totalDurationSeconds - outTimeSeconds;
+                    eta = static_cast<qint64>(remainingSeconds / speed);
+                }
+                running.job->setEtaSeconds(eta);
+                emit jobProgress(jobId, percent, speed, eta);
+            }
+        }
+    }
+}
+
+void FFmpegMediaEngine::handleProcessFinished(const QUuid &jobId, int exitCode, QProcess::ExitStatus exitStatus) {
+    auto it = m_runningJobs.find(jobId);
+    if (it == m_runningJobs.end()) {
+        return;
+    }
+    RunningJob running = it.value();
+    m_runningJobs.erase(it);
+
+    const bool success = (exitStatus == QProcess::NormalExit) && (exitCode == 0) &&
+                          QFileInfo::exists(running.job->outputPath());
+
+    if (success) {
+        running.job->setProgressPercent(100);
+        running.job->setStatus(JobStatus::Completed);
+        emit jobFinished(jobId, true, QString());
+    } else {
+        const QString errorText = QString::fromUtf8(running.stderrBuffer).trimmed();
+        running.job->setErrorMessage(errorText);
+        running.job->setStatus(JobStatus::Failed);
+        emit jobFinished(jobId, false, errorText);
+    }
+
+    running.process->deleteLater();
+}
+
+void FFmpegMediaEngine::cancelConversion(const QUuid &jobId) {
+    auto it = m_runningJobs.find(jobId);
+    if (it == m_runningJobs.end()) {
+        return;
+    }
+    it->job->setStatus(JobStatus::Cancelled);
+    it->process->kill();
+}
+
+} // namespace magnify::engines::ffmpeg

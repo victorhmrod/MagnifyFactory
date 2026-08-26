@@ -39,6 +39,10 @@ void FormatRegistry::registerBuiltins() {
     registerFormat({"JPEG", "jpg", FormatCategory::Image, {"image/jpeg"}, true, true});
     registerFormat({"JPEG", "jpeg", FormatCategory::Image, {"image/jpeg"}, true, true});
     registerFormat({"WebP", "webp", FormatCategory::Image, {"image/webp"}, true, true});
+    registerFormat({"AVIF", "avif", FormatCategory::Image, {"image/avif"}, true, true});
+    registerFormat({"BMP", "bmp", FormatCategory::Image, {"image/bmp"}, true, true});
+    registerFormat({"TIFF", "tiff", FormatCategory::Image, {"image/tiff"}, true, true});
+    registerFormat({"GIF", "gif", FormatCategory::Image, {"image/gif"}, true, true});
 
     // --- PDF -----------------------------------------------------------------
     registerFormat({"PDF", "pdf", FormatCategory::Pdf, {"application/pdf"}, true, true});

@@ -1,0 +1,61 @@
+# Build output
+build/
+build-*/
+out/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+compile_commands.json
+*_autogen/
+
+# vcpkg (installed packages, buildtrees, downloads — not the toolchain itself)
+vcpkg_installed/
+vcpkg_install.log
+
+# Visual Studio / MSVC
+.vs/
+*.vcxproj*
+*.sln
+*.suo
+*.user
+*.ilk
+*.pdb
+*.obj
+*.exp
+*.lib
+*.exe
+*.dll
+
+# Qt
+*.qmlc
+*.jsc
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+
+# Local AI agent instructions and tooling state (not shared in the public repo)
+CLAUDE.md
+AGENTS.md
+.claude/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Python (icon generation script artifacts, __pycache__)
+__pycache__/
+*.pyc
+
+# Local smoke-test scratch output
+tests/*.mp3
+tests/*.mp4
+tests/*.mkv
+tests/*.mpeg
+smoketest/

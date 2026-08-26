@@ -1,0 +1,299 @@
+#include "MainWindow.h"
+
+#include <QDir>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QHBoxLayout>
+#include <QHeaderView>
+#include <QLabel>
+#include <QListWidget>
+#include <QMessageBox>
+#include <QMimeData>
+#include <QPushButton>
+#include <QSpinBox>
+#include <QStatusBar>
+#include <QTableWidget>
+#include <QVBoxLayout>
+#include <QWidget>
+
+#include "ConvertDialog.h"
+#include "core/ConversionJob.h"
+#include "core/FormatRegistry.h"
+#include "core/JobManager.h"
+#include "engines/ffmpeg/FFmpegMediaEngine.h"
+
+using magnify::core::ConversionJob;
+using magnify::core::FormatCategory;
+using magnify::core::FormatRegistry;
+using magnify::core::JobManager;
+using magnify::core::JobStatus;
+
+namespace magnify::ui {
+
+namespace {
+constexpr int ColumnFile = 0;
+constexpr int ColumnFormat = 1;
+constexpr int ColumnStatus = 2;
+constexpr int ColumnProgress = 3;
+constexpr int ColumnEta = 4;
+
+constexpr int RoleCategory = Qt::UserRole + 1;
+
+QString statusColor(JobStatus status) {
+    switch (status) {
+        case JobStatus::Completed: return QStringLiteral("#3fb950");
+        case JobStatus::Failed: return QStringLiteral("#f85149");
+        case JobStatus::Cancelled: return QStringLiteral("#8b949e");
+        case JobStatus::Running: return QStringLiteral("#58a6ff");
+        default: return QStringLiteral("#c9d1d9");
+    }
+}
+} // namespace
+
+MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
+    m_engine = std::make_unique<magnify::engines::ffmpeg::FFmpegMediaEngine>();
+    m_jobManager = std::make_unique<JobManager>(m_engine.get());
+
+    setAcceptDrops(true);
+    setWindowTitle(QStringLiteral("MagnifyFactory"));
+    resize(980, 620);
+
+    applyDarkTheme();
+    buildUi();
+
+    connect(m_jobManager.get(), &JobManager::jobAdded, this, &MainWindow::appendRow);
+    connect(m_jobManager.get(), &JobManager::queueChanged, this, &MainWindow::updateStatusBar);
+
+    updateStatusBar();
+}
+
+MainWindow::~MainWindow() = default;
+
+void MainWindow::applyDarkTheme() {
+    setStyleSheet(R"(
+        QMainWindow, QWidget { background-color: #1e2126; color: #c9d1d9; font-size: 13px; }
+        QListWidget#sidebar { background-color: #17191d; border: none; padding-top: 8px; outline: none; }
+        QListWidget#sidebar::item { padding: 10px 16px; border-left: 3px solid transparent; }
+        QListWidget#sidebar::item:selected { background-color: #232833; border-left: 3px solid #58a6ff; color: #ffffff; }
+        QListWidget#sidebar::item:hover:!selected { background-color: #1f232a; }
+        QPushButton#dropZone { background-color: #232833; border: 2px dashed #3a4048; border-radius: 8px; font-size: 13px; }
+        QPushButton#dropZone:hover { border-color: #58a6ff; }
+        QPushButton { background-color: #2d333b; border: 1px solid #3a4048; border-radius: 4px; padding: 6px 14px; }
+        QPushButton:hover { background-color: #363c46; }
+        QSpinBox { background-color: #232833; border: 1px solid #3a4048; border-radius: 4px; padding: 4px 8px; }
+        QTableWidget { background-color: #1a1d22; gridline-color: #2a2f37; border: 1px solid #2a2f37; border-radius: 4px; }
+        QHeaderView::section { background-color: #232833; color: #8b949e; border: none; padding: 6px; }
+        QStatusBar { background-color: #17191d; color: #8b949e; border-top: 1px solid #2a2f37; }
+    )");
+}
+
+void MainWindow::buildUi() {
+    auto *central = new QWidget(this);
+    auto *rootLayout = new QHBoxLayout(central);
+    rootLayout->setContentsMargins(0, 0, 0, 0);
+    rootLayout->setSpacing(0);
+
+    // --- Sidebar: categories, mirroring section 11 without copying the
+    // visual style of any existing tool -----------------------------------
+    m_sidebar = new QListWidget(central);
+    m_sidebar->setObjectName(QStringLiteral("sidebar"));
+    m_sidebar->setFixedWidth(170);
+
+    auto addCategoryItem = [this](const QString &label, FormatCategory category) {
+        auto *item = new QListWidgetItem(label, m_sidebar);
+        item->setData(RoleCategory, static_cast<int>(category));
+    };
+    addCategoryItem(QStringLiteral("🎬  Video"), FormatCategory::Video);
+    addCategoryItem(QStringLiteral("🎵  Audio"), FormatCategory::Audio);
+    addCategoryItem(QStringLiteral("🖼  Images"), FormatCategory::Image);
+    addCategoryItem(QStringLiteral("📄  PDF"), FormatCategory::Pdf);
+    m_sidebar->setCurrentRow(0);
+    connect(m_sidebar, &QListWidget::currentItemChanged, this,
+            [this](QListWidgetItem *current, QListWidgetItem *) { onCategorySelected(current); });
+    rootLayout->addWidget(m_sidebar);
+
+    // --- Main content -------------------------------------------------------
+    auto *content = new QWidget(central);
+    auto *contentLayout = new QVBoxLayout(content);
+    contentLayout->setContentsMargins(20, 20, 20, 12);
+    contentLayout->setSpacing(12);
+
+    // Drop zone: dropping or picking a file immediately opens the format
+    // picker popup — there is no separate "convert to" combo anymore.
+    m_dropZoneButton = new QPushButton(content);
+    m_dropZoneButton->setObjectName(QStringLiteral("dropZone"));
+    m_dropZoneButton->setFlat(true);
+    m_dropZoneButton->setMinimumHeight(140);
+    m_dropZoneButton->setCursor(Qt::PointingHandCursor);
+    m_dropZoneButton->setText(QStringLiteral("Drag & drop a file here, or click to browse"));
+    connect(m_dropZoneButton, &QPushButton::clicked, this, [this]() {
+        const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Select file"));
+        if (!path.isEmpty()) {
+            addInputFile(path);
+        }
+    });
+    contentLayout->addWidget(m_dropZoneButton, 1);
+
+    // --- Queue table -------------------------------------------------------
+    m_queueTable = new QTableWidget(0, 5, content);
+    m_queueTable->setHorizontalHeaderLabels({"File", "Target", "Status", "Progress", "ETA"});
+    m_queueTable->horizontalHeader()->setSectionResizeMode(ColumnFile, QHeaderView::Stretch);
+    m_queueTable->verticalHeader()->setVisible(false);
+    m_queueTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_queueTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_queueTable->setShowGrid(false);
+    m_queueTable->setAlternatingRowColors(false);
+    contentLayout->addWidget(m_queueTable, 2);
+
+    // --- Queue controls -----------------------------------------------------
+    auto *controlsRow = new QHBoxLayout();
+    m_startButton = new QPushButton(QStringLiteral("Start Queue"), content);
+    connect(m_startButton, &QPushButton::clicked, this, [this]() { m_jobManager->startQueue(); });
+    controlsRow->addWidget(m_startButton);
+
+    auto *pauseButton = new QPushButton(QStringLiteral("Pause"), content);
+    connect(pauseButton, &QPushButton::clicked, this, [this]() { m_jobManager->pauseQueue(); });
+    controlsRow->addWidget(pauseButton);
+
+    controlsRow->addSpacing(12);
+    controlsRow->addWidget(new QLabel(QStringLiteral("Concurrent jobs:"), content));
+    m_concurrencySpin = new QSpinBox(content);
+    m_concurrencySpin->setRange(1, 16);
+    m_concurrencySpin->setValue(2);
+    connect(m_concurrencySpin, qOverload<int>(&QSpinBox::valueChanged), this,
+            [this](int value) { m_jobManager->setMaxConcurrentJobs(value); });
+    controlsRow->addWidget(m_concurrencySpin);
+    controlsRow->addStretch(1);
+    contentLayout->addLayout(controlsRow);
+
+    rootLayout->addWidget(content, 1);
+    setCentralWidget(central);
+
+    m_statusJobsLabel = new QLabel(this);
+    statusBar()->addWidget(m_statusJobsLabel);
+
+    onCategorySelected(m_sidebar->currentItem());
+}
+
+void MainWindow::onCategorySelected(QListWidgetItem *current) {
+    if (!current) {
+        return;
+    }
+    m_activeCategory = static_cast<FormatCategory>(current->data(RoleCategory).toInt());
+}
+
+void MainWindow::dragEnterEvent(QDragEnterEvent *event) {
+    if (event->mimeData()->hasUrls()) {
+        event->acceptProposedAction();
+    }
+}
+
+void MainWindow::dropEvent(QDropEvent *event) {
+    for (const QUrl &url : event->mimeData()->urls()) {
+        if (url.isLocalFile()) {
+            addInputFile(url.toLocalFile());
+        }
+    }
+}
+
+void MainWindow::openExternalFile(const QString &filePath) {
+    show();
+    raise();
+    activateWindow();
+    addInputFile(filePath);
+}
+
+void MainWindow::addInputFile(const QString &filePath) {
+    const QString ext = QFileInfo(filePath).suffix().toLower();
+    const FormatCategory category = FormatRegistry::instance().categoryOf(ext);
+    if (category == FormatCategory::Unknown) {
+        QMessageBox::warning(this, QStringLiteral("MagnifyFactory"),
+                              QStringLiteral("Unrecognized file type: %1").arg(ext));
+        return;
+    }
+
+    for (int row = 0; row < m_sidebar->count(); ++row) {
+        QListWidgetItem *item = m_sidebar->item(row);
+        if (static_cast<FormatCategory>(item->data(RoleCategory).toInt()) == category) {
+            m_sidebar->setCurrentItem(item);
+            break;
+        }
+    }
+
+    ConvertDialog dialog(filePath, category, this);
+    if (dialog.exec() == QDialog::Accepted && !dialog.selectedFormat().isEmpty()) {
+        enqueueFile(filePath, dialog.selectedFormat());
+    }
+}
+
+void MainWindow::enqueueFile(const QString &inputPath, const QString &targetExt) {
+    // Export next to the source file instead of a separate output folder.
+    const QFileInfo inputInfo(inputPath);
+    const QDir outDir = inputInfo.absoluteDir();
+    QString outputPath = outDir.filePath(inputInfo.completeBaseName() + QStringLiteral(".") + targetExt);
+
+    // Never let the output overwrite the input file it comes from.
+    if (QFileInfo(outputPath).absoluteFilePath().compare(inputInfo.absoluteFilePath(), Qt::CaseInsensitive) == 0) {
+        outputPath = outDir.filePath(inputInfo.completeBaseName() + QStringLiteral(" (converted).") + targetExt);
+    }
+
+    auto job = std::make_unique<ConversionJob>(inputPath, outputPath);
+    job->setSourceFormat(inputInfo.suffix().toLower());
+    job->setTargetFormat(targetExt);
+    job->setEngineName(QStringLiteral("FFmpeg"));
+
+    m_jobManager->addJob(std::move(job));
+    statusBar()->showMessage(QStringLiteral("Queued: %1 → %2").arg(inputInfo.fileName(), targetExt.toUpper()), 4000);
+}
+
+void MainWindow::appendRow(ConversionJob *job) {
+    const int row = m_queueTable->rowCount();
+    m_queueTable->insertRow(row);
+    m_queueTable->setItem(row, ColumnFile, new QTableWidgetItem(QFileInfo(job->inputPath()).fileName()));
+    m_queueTable->setItem(row, ColumnFormat, new QTableWidgetItem(job->targetFormat().toUpper()));
+    m_queueTable->setItem(row, ColumnStatus, new QTableWidgetItem(magnify::core::jobStatusToString(job->status())));
+    m_queueTable->setItem(row, ColumnProgress, new QTableWidgetItem(QStringLiteral("0%")));
+    m_queueTable->setItem(row, ColumnEta, new QTableWidgetItem(QStringLiteral("-")));
+
+    connect(job, &ConversionJob::statusChanged, this, [this, job](magnify::core::JobStatus) { refreshRow(job); });
+    connect(job, &ConversionJob::progressChanged, this, [this, job](int) { refreshRow(job); });
+}
+
+void MainWindow::refreshRow(ConversionJob *job) {
+    for (int row = 0; row < m_queueTable->rowCount(); ++row) {
+        if (m_queueTable->item(row, ColumnFile)->text() == QFileInfo(job->inputPath()).fileName()) {
+            auto *statusItem = m_queueTable->item(row, ColumnStatus);
+            statusItem->setText(magnify::core::jobStatusToString(job->status()));
+            statusItem->setForeground(QColor(statusColor(job->status())));
+            m_queueTable->item(row, ColumnProgress)->setText(QStringLiteral("%1%").arg(job->progressPercent()));
+            m_queueTable->item(row, ColumnEta)
+                ->setText(job->etaSeconds() >= 0 ? QStringLiteral("%1s").arg(job->etaSeconds())
+                                                  : QStringLiteral("-"));
+            if (job->status() == JobStatus::Failed && !job->errorMessage().isEmpty()) {
+                QMessageBox::warning(this, QStringLiteral("Conversion failed"),
+                                      QStringLiteral("%1\n\nDetails:\n%2")
+                                          .arg(QFileInfo(job->inputPath()).fileName(), job->errorMessage()));
+            }
+            return;
+        }
+    }
+}
+
+void MainWindow::updateStatusBar() {
+    int running = 0, queued = 0;
+    for (ConversionJob *job : m_jobManager->jobs()) {
+        if (job->status() == JobStatus::Running || job->status() == JobStatus::Preparing) {
+            ++running;
+        } else if (job->status() == JobStatus::Queued) {
+            ++queued;
+        }
+    }
+    m_statusJobsLabel->setText(QStringLiteral("Active jobs: %1    Queued: %2    Total: %3")
+                                    .arg(running)
+                                    .arg(queued)
+                                    .arg(m_jobManager->jobs().size()));
+}
+
+} // namespace magnify::ui
