@@ -19,6 +19,11 @@ set(MAGNIFY_CORE_SOURCES
     src/core/FormatRegistry.cpp
 )
 
+set(MAGNIFY_HARDWARE_SOURCES
+    src/hardware/HardwareAccelerationManager.h
+    src/hardware/HardwareAccelerationManager.cpp
+)
+
 set(MAGNIFY_ENGINE_SOURCES
     src/engines/IMediaEngine.h
     src/engines/ffmpeg/FFmpegCommandBuilder.h
@@ -44,9 +49,13 @@ add_library(magnify_core STATIC ${MAGNIFY_CORE_SOURCES})
 target_include_directories(magnify_core PUBLIC src)
 target_link_libraries(magnify_core PUBLIC Qt6::Widgets)
 
+add_library(magnify_hardware STATIC ${MAGNIFY_HARDWARE_SOURCES})
+target_include_directories(magnify_hardware PUBLIC src)
+target_link_libraries(magnify_hardware PUBLIC Qt6::Widgets)
+
 add_library(magnify_engines STATIC ${MAGNIFY_ENGINE_SOURCES})
 target_include_directories(magnify_engines PUBLIC src)
-target_link_libraries(magnify_engines PUBLIC Qt6::Widgets magnify_core)
+target_link_libraries(magnify_engines PUBLIC Qt6::Widgets magnify_core magnify_hardware)
 
 set(MAGNIFY_RESOURCES resources/icon.qrc)
 if(WIN32)
@@ -59,7 +68,7 @@ add_executable(MagnifyFactory WIN32
     ${MAGNIFY_RESOURCES}
 )
 target_include_directories(MagnifyFactory PRIVATE src)
-target_link_libraries(MagnifyFactory PRIVATE Qt6::Widgets magnify_core magnify_engines)
+target_link_libraries(MagnifyFactory PRIVATE Qt6::Widgets magnify_core magnify_hardware magnify_engines)
 
 # Qt cannot start without its "platforms" plugin (qwindows[d].dll). windeployqt
 # isn't available from this vcpkg install, so copy the plugin directly next

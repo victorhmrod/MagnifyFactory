@@ -44,6 +44,9 @@ can be added without touching existing code.
 - **Smart remux** — skips re-encoding when the source codec is already
   compatible with the target container (e.g. MKV H.264/AAC → MP4 is a
   stream copy, not a re-encode).
+- **GPU-accelerated encoding** — detects NVIDIA NVENC / AMD AMF / Intel Quick
+  Sync by running a real test encode for each (not just checking what FFmpeg
+  was compiled with), and lets you pick one from the queue controls.
 - **Video**: MP4, MKV, MOV, MPEG/MPG, WebM, FLV.
 - **Audio**: MP3, WAV, FLAC, AAC, M4A, OGG — including audio extraction
   straight from a video file.
@@ -63,7 +66,7 @@ can be added without touching existing code.
 - [ ] PDF merge/split (needs multi-file selection in the UI, which doesn't
       exist yet — single-file drag-and-drop only)
 - [ ] Documents and archive conversion
-- [ ] Hardware-accelerated encoding (NVENC / AMF / Quick Sync)
+- [x] Hardware-accelerated encoding (NVENC / AMF / Quick Sync)
 - [ ] Presets (YouTube, Discord, WhatsApp, Instagram, ...)
 - [ ] Batch folder processing and watch folders
 - [ ] `magnify` CLI sharing the same core as the GUI
@@ -179,6 +182,7 @@ Key pieces:
 | [`IMediaEngine`](src/engines/IMediaEngine.h) | Abstraction any conversion backend implements — swappable, testable in isolation. |
 | [`FFmpegCommandBuilder`](src/engines/ffmpeg/FFmpegCommandBuilder.h) | Produces `QStringList` argv, never a concatenated shell string. |
 | [`PdfEngine`](src/engines/pdf/PdfEngine.h) | PDF ↔ image via Poppler's `pdftoppm`, plus a minimal in-process PDF writer for image → PDF. |
+| [`HardwareAccelerationManager`](src/hardware/HardwareAccelerationManager.h) | Verifies GPU encoders with a real test encode rather than trusting what FFmpeg was compiled with. |
 
 ## Contributing
 

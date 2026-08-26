@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include <QComboBox>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -24,12 +25,16 @@
 #include "core/JobManager.h"
 #include "engines/ffmpeg/FFmpegMediaEngine.h"
 #include "engines/pdf/PdfEngine.h"
+#include "hardware/HardwareAccelerationManager.h"
 
 using magnify::core::ConversionJob;
 using magnify::core::FormatCategory;
 using magnify::core::FormatRegistry;
 using magnify::core::JobManager;
 using magnify::core::JobStatus;
+using magnify::hardware::HardwareAccelerationManager;
+using magnify::hardware::HardwareVendor;
+using magnify::hardware::hardwareVendorToString;
 
 namespace magnify::ui {
 
@@ -169,6 +174,20 @@ void MainWindow::buildUi() {
     connect(m_concurrencySpin, qOverload<int>(&QSpinBox::valueChanged), this,
             [this](int value) { m_jobManager->setMaxConcurrentJobs(value); });
     controlsRow->addWidget(m_concurrencySpin);
+
+    controlsRow->addSpacing(12);
+    controlsRow->addWidget(new QLabel(QStringLiteral("Hardware:"), content));
+    m_hardwareCombo = new QComboBox(content);
+    m_hardwareCombo->addItem(QStringLiteral("Auto"), hardwareVendorToString(HardwareVendor::Auto));
+    m_hardwareCombo->addItem(QStringLiteral("CPU"), hardwareVendorToString(HardwareVendor::Cpu));
+    // Verifying each vendor runs a real (tiny) test encode, so this briefly
+    // blocks the UI on first launch; the result is cached for the session.
+    const QList<HardwareVendor> detected = HardwareAccelerationManager::instance().availableVendors();
+    if (detected.contains(HardwareVendor::Nvidia)) m_hardwareCombo->addItem(QStringLiteral("NVIDIA NVENC"), hardwareVendorToString(HardwareVendor::Nvidia));
+    if (detected.contains(HardwareVendor::Amd)) m_hardwareCombo->addItem(QStringLiteral("AMD AMF"), hardwareVendorToString(HardwareVendor::Amd));
+    if (detected.contains(HardwareVendor::Intel)) m_hardwareCombo->addItem(QStringLiteral("Intel Quick Sync"), hardwareVendorToString(HardwareVendor::Intel));
+    controlsRow->addWidget(m_hardwareCombo);
+
     controlsRow->addStretch(1);
     contentLayout->addLayout(controlsRow);
 
@@ -250,6 +269,7 @@ void MainWindow::enqueueFile(const QString &inputPath, const QString &targetExt)
     job->setSourceFormat(sourceExt);
     job->setTargetFormat(targetExt);
     job->setEngineName(isPdfJob ? QStringLiteral("PDF Tools") : QStringLiteral("FFmpeg"));
+    job->setParameters({{QStringLiteral("hardwareBackend"), m_hardwareCombo->currentData()}});
 
     m_jobManager->addJob(std::move(job));
     statusBar()->showMessage(QStringLiteral("Queued: %1 → %2").arg(inputInfo.fileName(), targetExt.toUpper()), 4000);

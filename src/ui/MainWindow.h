@@ -60,6 +60,7 @@ private:
     QPushButton *m_startButton = nullptr;
     QPushButton *m_dropZoneButton = nullptr;
     QSpinBox *m_concurrencySpin = nullptr;
+    QComboBox *m_hardwareCombo = nullptr;
     QLabel *m_statusJobsLabel = nullptr;
 
     magnify::core::FormatCategory m_activeCategory = magnify::core::FormatCategory::Video;

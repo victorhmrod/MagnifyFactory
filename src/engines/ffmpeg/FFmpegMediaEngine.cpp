@@ -3,6 +3,7 @@
 #include "FFmpegCommandBuilder.h"
 #include "FFprobe.h"
 #include "core/FormatRegistry.h"
+#include "hardware/HardwareAccelerationManager.h"
 
 #include <QFileInfo>
 
@@ -10,8 +11,28 @@ using magnify::core::ConversionJob;
 using magnify::core::FormatCategory;
 using magnify::core::FormatRegistry;
 using magnify::core::JobStatus;
+using magnify::hardware::HardwareAccelerationManager;
+using magnify::hardware::hardwareVendorFromString;
 
 namespace magnify::engines::ffmpeg {
+
+namespace {
+// Applies the job's requested hardware backend (or CPU/libx264 if none is
+// usable) to the builder. NVENC/AMF/QSV don't share libx264's CRF semantics,
+// so hardware encodes use a bitrate target instead.
+void applyVideoEncoder(FFmpegCommandBuilder &builder, const magnify::core::JobParameters &params) {
+    const auto vendor = hardwareVendorFromString(params.value(QStringLiteral("hardwareBackend"), "auto").toString());
+    const QString encoder = HardwareAccelerationManager::instance().encoderFor(vendor, QStringLiteral("h264"));
+
+    if (encoder == QStringLiteral("libx264") || encoder == QStringLiteral("libx265")) {
+        builder.setVideoCodec(params.value(QStringLiteral("videoCodec"), encoder).toString());
+        builder.setCrf(params.value(QStringLiteral("crf"), 23).toInt());
+    } else {
+        builder.setHardwareEncoder(encoder);
+        builder.setVideoBitrate(params.value(QStringLiteral("videoBitrate"), "6000k").toString());
+    }
+}
+} // namespace
 
 FFmpegMediaEngine::FFmpegMediaEngine(QObject *parent) : IMediaEngine(parent) {
 }
@@ -99,8 +120,7 @@ QStringList FFmpegMediaEngine::buildArgsForJob(ConversionJob *job, const MediaPr
             if (canStreamCopy) {
                 builder.copyVideoStream().copyAudioStream();
             } else {
-                builder.setVideoCodec(params.value(QStringLiteral("videoCodec"), "libx264").toString());
-                builder.setCrf(params.value(QStringLiteral("crf"), 23).toInt());
+                applyVideoEncoder(builder, params);
                 builder.setAudioCodec(QStringLiteral("aac"));
                 builder.setAudioBitrate(params.value(QStringLiteral("audioBitrate"), "192k").toString());
             }
@@ -108,8 +128,7 @@ QStringList FFmpegMediaEngine::buildArgsForJob(ConversionJob *job, const MediaPr
         }
 
         // Generic fallback: re-encode to H.264/AAC for any other target container.
-        builder.setVideoCodec(params.value(QStringLiteral("videoCodec"), "libx264").toString());
-        builder.setCrf(params.value(QStringLiteral("crf"), 23).toInt());
+        applyVideoEncoder(builder, params);
         builder.setAudioCodec(QStringLiteral("aac"));
         return builder.build();
     }
