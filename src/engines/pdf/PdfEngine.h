@@ -2,6 +2,7 @@
 
 #include <QHash>
 #include <QProcess>
+#include <functional>
 
 #include "engines/IMediaEngine.h"
 
@@ -28,6 +29,14 @@ private:
     void convertImageToPdf(magnify::core::ConversionJob *job);
     void compressPdf(magnify::core::ConversionJob *job);
     void finishJob(magnify::core::ConversionJob *job, bool success, const QString &errorMessage);
+
+    // Shared process bookkeeping (registering in m_runningProcesses so
+    // cancelConversion() can find it, cleanup on exit) for every method that
+    // shells out to pdftoppm/ffmpeg/qpdf. `onFinished` only needs to decide
+    // success/failure from the exit code and produce an error message.
+    using ProcessFinishedHandler = std::function<void(QProcess *process, int exitCode, QProcess::ExitStatus status)>;
+    void runProcess(magnify::core::ConversionJob *job, const QString &program, const QStringList &args,
+                     ProcessFinishedHandler onFinished);
 
     QHash<QUuid, QProcess *> m_runningProcesses;
 };

@@ -9,8 +9,7 @@
 namespace magnify::engines {
 
 // Metadata describing a probed media file, filled in by IMediaEngine::probe().
-// Mirrors what ffprobe/MediaInfo would report; the Media Inspector UI (section 13)
-// reads this struct directly.
+// Mirrors what ffprobe/MediaInfo would report.
 struct MediaProbeResult {
     bool valid = false;
     QString container;
@@ -37,7 +36,7 @@ public:
 
     virtual QString name() const = 0;
 
-    // Synchronous probe — fast, used to populate the UI as soon as a file is dropped.
+    // Synchronous probe — fast, intended for populating a media inspector view.
     virtual MediaProbeResult probe(const QString &filePath) = 0;
 
     // Starts an asynchronous conversion for the given job. Progress/completion

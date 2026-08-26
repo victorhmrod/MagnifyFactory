@@ -207,9 +207,11 @@ void FFmpegMediaEngine::handleProgressData(const QUuid &jobId) {
         const QByteArray key = line.left(eq);
         const QByteArray value = line.mid(eq + 1);
 
-        if (key == "out_time_ms") {
-            outTimeSeconds = value.toDouble() / 1'000'000.0;
-        } else if (key == "out_time_us") {
+        if (key == "out_time_ms" || key == "out_time_us") {
+            // Despite its name, ffmpeg's "out_time_ms" field is actually
+            // microseconds (a long-standing, documented ffmpeg quirk kept for
+            // backwards compatibility); "out_time_us" is the same value under
+            // its correctly spelled name. Both divide by 1e6, not 1e3.
             outTimeSeconds = value.toDouble() / 1'000'000.0;
         } else if (key == "speed") {
             QByteArray v = value;

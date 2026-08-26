@@ -47,6 +47,7 @@ constexpr int ColumnProgress = 3;
 constexpr int ColumnEta = 4;
 
 constexpr int RoleCategory = Qt::UserRole + 1;
+constexpr int RoleJobId = Qt::UserRole + 2; // ConversionJob::id(), stored on the File column's item
 
 QString statusColor(JobStatus status) {
     switch (status) {
@@ -105,8 +106,7 @@ void MainWindow::buildUi() {
     rootLayout->setContentsMargins(0, 0, 0, 0);
     rootLayout->setSpacing(0);
 
-    // --- Sidebar: categories, mirroring section 11 without copying the
-    // visual style of any existing tool -----------------------------------
+    // --- Sidebar: format categories --------------------------------------
     m_sidebar = new QListWidget(central);
     m_sidebar->setObjectName(QStringLiteral("sidebar"));
     m_sidebar->setFixedWidth(170);
@@ -230,15 +230,14 @@ void MainWindow::populateHardwareCombo() {
     }
 
     if (detected.size() > 1) {
-        statusBar()->showMessage(QStringLiteral("GPU acceleration available: %1")
-                                      .arg([&] {
-                                          QStringList names;
-                                          for (auto v : detected) {
-                                              if (v != HardwareVendor::Cpu) names << hardwareVendorToString(v).toUpper();
-                                          }
-                                          return names.join(QStringLiteral(", "));
-                                      }()),
-                                  5000);
+        QStringList gpuNames;
+        for (HardwareVendor vendor : detected) {
+            if (vendor != HardwareVendor::Cpu) {
+                gpuNames << hardwareVendorToString(vendor).toUpper();
+            }
+        }
+        statusBar()->showMessage(
+            QStringLiteral("GPU acceleration available: %1").arg(gpuNames.join(QStringLiteral(", "))), 5000);
     }
 }
 
@@ -320,7 +319,9 @@ void MainWindow::enqueueFile(const QString &inputPath, const QString &targetExt)
 void MainWindow::appendRow(ConversionJob *job) {
     const int row = m_queueTable->rowCount();
     m_queueTable->insertRow(row);
-    m_queueTable->setItem(row, ColumnFile, new QTableWidgetItem(QFileInfo(job->inputPath()).fileName()));
+    auto *fileItem = new QTableWidgetItem(QFileInfo(job->inputPath()).fileName());
+    fileItem->setData(RoleJobId, job->id());
+    m_queueTable->setItem(row, ColumnFile, fileItem);
     m_queueTable->setItem(row, ColumnFormat, new QTableWidgetItem(job->targetFormat().toUpper()));
     m_queueTable->setItem(row, ColumnStatus, new QTableWidgetItem(magnify::core::jobStatusToString(job->status())));
     m_queueTable->setItem(row, ColumnProgress, new QTableWidgetItem(QStringLiteral("0%")));
@@ -332,7 +333,7 @@ void MainWindow::appendRow(ConversionJob *job) {
 
 void MainWindow::refreshRow(ConversionJob *job) {
     for (int row = 0; row < m_queueTable->rowCount(); ++row) {
-        if (m_queueTable->item(row, ColumnFile)->text() == QFileInfo(job->inputPath()).fileName()) {
+        if (m_queueTable->item(row, ColumnFile)->data(RoleJobId).toUuid() == job->id()) {
             auto *statusItem = m_queueTable->item(row, ColumnStatus);
             statusItem->setText(magnify::core::jobStatusToString(job->status()));
             statusItem->setForeground(QColor(statusColor(job->status())));

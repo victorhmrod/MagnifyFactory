@@ -47,6 +47,21 @@ void PdfEngine::startConversion(ConversionJob *job) {
     }
 }
 
+void PdfEngine::runProcess(ConversionJob *job, const QString &program, const QStringList &args,
+                            ProcessFinishedHandler onFinished) {
+    auto *process = new QProcess(this);
+    m_runningProcesses.insert(job->id(), process);
+
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, job, process, onFinished = std::move(onFinished)](int exitCode, QProcess::ExitStatus exitStatus) {
+                m_runningProcesses.remove(job->id());
+                onFinished(process, exitCode, exitStatus);
+                process->deleteLater();
+            });
+
+    process->start(program, args);
+}
+
 void PdfEngine::convertPdfToImage(ConversionJob *job) {
     const QString targetExt = job->targetFormat().toLower();
     const bool isJpeg = targetExt == QStringLiteral("jpg") || targetExt == QStringLiteral("jpeg");
@@ -57,7 +72,7 @@ void PdfEngine::convertPdfToImage(ConversionJob *job) {
     const QFileInfo outputInfo(job->outputPath());
     const QString outputPrefix = QDir(outputInfo.absolutePath()).filePath(outputInfo.completeBaseName());
 
-    QStringList args{
+    const QStringList args{
         isJpeg ? QStringLiteral("-jpeg") : QStringLiteral("-png"),
         QStringLiteral("-singlefile"),
         QStringLiteral("-r"), QStringLiteral("150"),
@@ -67,25 +82,18 @@ void PdfEngine::convertPdfToImage(ConversionJob *job) {
         outputPrefix,
     };
 
-    auto *process = new QProcess(this);
-    m_runningProcesses.insert(job->id(), process);
-
-    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, job, process, outputPrefix, targetExt](int exitCode, QProcess::ExitStatus exitStatus) {
-                const QString producedPath = outputPrefix + QStringLiteral(".") + targetExt;
-                const bool success = exitStatus == QProcess::NormalExit && exitCode == 0 &&
-                                      QFileInfo::exists(producedPath);
-                if (success && producedPath != job->outputPath()) {
-                    QFile::remove(job->outputPath());
-                    QFile::rename(producedPath, job->outputPath());
-                }
-                const QString error = success ? QString() : QString::fromUtf8(process->readAllStandardError());
-                m_runningProcesses.remove(job->id());
-                process->deleteLater();
-                finishJob(job, success, error);
-            });
-
-    process->start(QStringLiteral("pdftoppm"), args);
+    runProcess(job, QStringLiteral("pdftoppm"), args,
+               [this, job, outputPrefix, targetExt](QProcess *process, int exitCode, QProcess::ExitStatus exitStatus) {
+                   const QString producedPath = outputPrefix + QStringLiteral(".") + targetExt;
+                   const bool success =
+                       exitStatus == QProcess::NormalExit && exitCode == 0 && QFileInfo::exists(producedPath);
+                   if (success && producedPath != job->outputPath()) {
+                       QFile::remove(job->outputPath());
+                       QFile::rename(producedPath, job->outputPath());
+                   }
+                   const QString error = success ? QString() : QString::fromUtf8(process->readAllStandardError());
+                   finishJob(job, success, error);
+               });
 }
 
 void PdfEngine::convertImageToPdf(ConversionJob *job) {
@@ -111,33 +119,25 @@ void PdfEngine::convertImageToPdf(ConversionJob *job) {
     const QString tempJpegPath = tempFile->fileName();
     tempFile->close();
 
-    auto *process = new QProcess(this);
-    m_runningProcesses.insert(job->id(), process);
+    runProcess(job, QStringLiteral("ffmpeg"),
+               {QStringLiteral("-y"), QStringLiteral("-i"), job->inputPath(), tempJpegPath},
+               [this, job, tempJpegPath, tempFile](QProcess *process, int exitCode, QProcess::ExitStatus exitStatus) {
+                   const bool reencodeOk =
+                       exitStatus == QProcess::NormalExit && exitCode == 0 && QFileInfo::exists(tempJpegPath);
+                   if (!reencodeOk) {
+                       QFile::remove(tempJpegPath);
+                       tempFile->deleteLater();
+                       finishJob(job, false, QStringLiteral("Could not prepare image for PDF embedding: %1")
+                                                 .arg(QString::fromUtf8(process->readAllStandardError())));
+                       return;
+                   }
 
-    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, job, process, tempJpegPath, tempFile](int exitCode, QProcess::ExitStatus exitStatus) {
-                m_runningProcesses.remove(job->id());
-                process->deleteLater();
-
-                const bool reencodeOk =
-                    exitStatus == QProcess::NormalExit && exitCode == 0 && QFileInfo::exists(tempJpegPath);
-                if (!reencodeOk) {
-                    QFile::remove(tempJpegPath);
-                    tempFile->deleteLater();
-                    finishJob(job, false, QStringLiteral("Could not prepare image for PDF embedding: %1")
-                                              .arg(QString::fromUtf8(process->readAllStandardError())));
-                    return;
-                }
-
-                QString error;
-                const bool ok = PdfImageWriter::writeSingleImagePdf(tempJpegPath, job->outputPath(), &error);
-                QFile::remove(tempJpegPath);
-                tempFile->deleteLater();
-                finishJob(job, ok, error);
-            });
-
-    process->start(QStringLiteral("ffmpeg"),
-                    {QStringLiteral("-y"), QStringLiteral("-i"), job->inputPath(), tempJpegPath});
+                   QString error;
+                   const bool ok = PdfImageWriter::writeSingleImagePdf(tempJpegPath, job->outputPath(), &error);
+                   QFile::remove(tempJpegPath);
+                   tempFile->deleteLater();
+                   finishJob(job, ok, error);
+               });
 }
 
 void PdfEngine::compressPdf(ConversionJob *job) {
@@ -151,21 +151,14 @@ void PdfEngine::compressPdf(ConversionJob *job) {
         job->outputPath(),
     };
 
-    auto *process = new QProcess(this);
-    m_runningProcesses.insert(job->id(), process);
-
-    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, job, process](int exitCode, QProcess::ExitStatus exitStatus) {
-                // qpdf exits 3 for "warnings only" (still a usable output file).
-                const bool success = (exitStatus == QProcess::NormalExit) && (exitCode == 0 || exitCode == 3) &&
-                                      QFileInfo::exists(job->outputPath());
-                const QString error = success ? QString() : QString::fromUtf8(process->readAllStandardError());
-                m_runningProcesses.remove(job->id());
-                process->deleteLater();
-                finishJob(job, success, error);
-            });
-
-    process->start(QStringLiteral("qpdf"), args);
+    runProcess(job, QStringLiteral("qpdf"), args,
+               [this, job](QProcess *process, int exitCode, QProcess::ExitStatus exitStatus) {
+                   // qpdf exits 3 for "warnings only" (still a usable output file).
+                   const bool success = (exitStatus == QProcess::NormalExit) && (exitCode == 0 || exitCode == 3) &&
+                                         QFileInfo::exists(job->outputPath());
+                   const QString error = success ? QString() : QString::fromUtf8(process->readAllStandardError());
+                   finishJob(job, success, error);
+               });
 }
 
 void PdfEngine::finishJob(ConversionJob *job, bool success, const QString &errorMessage) {
