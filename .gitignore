@@ -2,6 +2,8 @@
 build/
 build-*/
 out/
+dist/
+installer_test/
 
 # CMake
 CMakeCache.txt

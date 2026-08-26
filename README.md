@@ -63,6 +63,17 @@ be added without touching existing code.
 - [ ] `magnify` CLI sharing the same core as the GUI
 - [ ] Plugin API for third-party format/tool modules
 
+## Installing
+
+Grab the latest `MagnifyFactory-Setup-<version>.exe` from the
+[Releases](https://github.com/victorhmrod/MagnifyFactory/releases) page and
+run it. It's a per-user install (no admin rights needed) with an optional
+checkbox to add *Convert with MagnifyFactory* to the Explorer right-click
+menu, and it registers an uninstaller.
+
+MagnifyFactory shells out to `ffmpeg`/`ffprobe` rather than bundling them —
+make sure both are on your `PATH` (e.g. `winget install Gyan.FFmpeg`).
+
 ## Building from source
 
 ### Prerequisites
@@ -105,19 +116,28 @@ cd build
 ctest --output-on-failure
 ```
 
+### Building the installer
+
+Requires [Inno Setup 6](https://jrsoftware.org/isinfo.php)
+(`winget install --id JRSoftware.InnoSetup -e`). This builds a Release
+config and packages it in one step:
+
+```powershell
+./scripts/build_installer.ps1
+```
+
+The output lands at `dist/MagnifyFactory-Setup-<version>.exe`. See
+[installer/MagnifyFactory.iss](installer/MagnifyFactory.iss).
+
 ## Windows context menu integration
 
-Add *Convert with MagnifyFactory* to Explorer's right-click menu for every
-file type (per-user, no admin rights needed — it only touches
-`HKEY_CURRENT_USER`):
+The installer offers this as an opt-in checkbox during setup, registered
+against the actual install path. For a dev build (running straight out of
+`build/`), register/unregister it manually instead (per-user, no admin
+rights needed — only touches `HKEY_CURRENT_USER`):
 
 ```powershell
 ./scripts/register_context_menu.ps1
-```
-
-Remove it again with:
-
-```powershell
 ./scripts/unregister_context_menu.ps1
 ```
 
