@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QUuid>
 #include <QVariantMap>
 
@@ -33,6 +34,13 @@ public:
     QUuid id() const { return m_id; }
     QString inputPath() const { return m_inputPath; }
     QString outputPath() const { return m_outputPath; }
+
+    // Additional inputs beyond inputPath(), used only by multi-file
+    // operations (currently: PdfEngine's merge). Every other job type
+    // leaves this empty and engines should treat inputPath() as the sole
+    // input.
+    QStringList extraInputPaths() const { return m_extraInputPaths; }
+    void setExtraInputPaths(const QStringList &paths) { m_extraInputPaths = paths; }
 
     QString sourceFormat() const { return m_sourceFormat; }
     void setSourceFormat(const QString &format) { m_sourceFormat = format; }
@@ -79,6 +87,7 @@ private:
     QUuid m_id;
     QString m_inputPath;
     QString m_outputPath;
+    QStringList m_extraInputPaths;
     QString m_sourceFormat;
     QString m_targetFormat;
     QString m_engineName;

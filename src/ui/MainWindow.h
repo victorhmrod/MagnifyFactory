@@ -47,7 +47,13 @@ private:
     void buildUi();
     void applyDarkTheme();
     void addInputFile(const QString &filePath);
+    // Groups files by format category and shows one ConvertDialog per group
+    // (not one per file) so batch drops/folder adds pick a format once and
+    // apply it to every matching file.
+    void addInputFiles(const QStringList &paths);
+    void addInputFolder();
     void enqueueFile(const QString &inputPath, const QString &targetExt, const QVariantMap &presetParameters = {});
+    void mergePdfs(const QStringList &pdfPaths);
     void refreshRow(magnify::core::ConversionJob *job);
     void appendRow(magnify::core::ConversionJob *job);
     void onCategorySelected(QListWidgetItem *current);

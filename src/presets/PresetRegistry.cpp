@@ -49,6 +49,8 @@ void PresetRegistry::registerBuiltins() {
 
     m_presets << makePreset(QStringLiteral("Small Size"), C::Pdf, QStringLiteral("pdf"), {{"jpegQuality", 40}});
     m_presets << makePreset(QStringLiteral("High Quality"), C::Pdf, QStringLiteral("pdf"), {{"jpegQuality", 90}});
+    m_presets << makePreset(QStringLiteral("Split (one file per page)"), C::Pdf, QStringLiteral("pdf"),
+                             {{"operation", "split"}});
 }
 
 void PresetRegistry::loadUserPresets() {

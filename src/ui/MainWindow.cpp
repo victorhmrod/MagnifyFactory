@@ -2,10 +2,12 @@
 
 #include <QComboBox>
 #include <QDir>
+#include <QDirIterator>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QHash>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -130,21 +132,29 @@ void MainWindow::buildUi() {
     contentLayout->setContentsMargins(20, 20, 20, 12);
     contentLayout->setSpacing(12);
 
-    // Drop zone: dropping or picking a file immediately opens the format
-    // picker popup — there is no separate "convert to" combo anymore.
+    // Drop zone: dropping or picking one or more files immediately opens the
+    // format picker popup (once per format category, so a batch of same-type
+    // files only asks once) — there is no separate "convert to" combo anymore.
     m_dropZoneButton = new QPushButton(content);
     m_dropZoneButton->setObjectName(QStringLiteral("dropZone"));
     m_dropZoneButton->setFlat(true);
     m_dropZoneButton->setMinimumHeight(140);
     m_dropZoneButton->setCursor(Qt::PointingHandCursor);
-    m_dropZoneButton->setText(QStringLiteral("Drag & drop a file here, or click to browse"));
+    m_dropZoneButton->setText(QStringLiteral("Drag & drop files here, or click to browse"));
     connect(m_dropZoneButton, &QPushButton::clicked, this, [this]() {
-        const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Select file"));
-        if (!path.isEmpty()) {
-            addInputFile(path);
+        const QStringList paths = QFileDialog::getOpenFileNames(this, QStringLiteral("Select files"));
+        if (!paths.isEmpty()) {
+            addInputFiles(paths);
         }
     });
-    contentLayout->addWidget(m_dropZoneButton, 1);
+
+    auto *dropRow = new QHBoxLayout();
+    dropRow->addWidget(m_dropZoneButton, 1);
+    auto *addFolderButton = new QPushButton(QStringLiteral("Add Folder..."), content);
+    addFolderButton->setFixedWidth(120);
+    connect(addFolderButton, &QPushButton::clicked, this, &MainWindow::addInputFolder);
+    dropRow->addWidget(addFolderButton);
+    contentLayout->addLayout(dropRow, 1);
 
     // --- Queue table -------------------------------------------------------
     m_queueTable = new QTableWidget(0, 5, content);
@@ -255,10 +265,14 @@ void MainWindow::dragEnterEvent(QDragEnterEvent *event) {
 }
 
 void MainWindow::dropEvent(QDropEvent *event) {
+    QStringList paths;
     for (const QUrl &url : event->mimeData()->urls()) {
         if (url.isLocalFile()) {
-            addInputFile(url.toLocalFile());
+            paths << url.toLocalFile();
         }
+    }
+    if (!paths.isEmpty()) {
+        addInputFiles(paths);
     }
 }
 
@@ -270,32 +284,126 @@ void MainWindow::openExternalFile(const QString &filePath) {
 }
 
 void MainWindow::addInputFile(const QString &filePath) {
-    const QString ext = QFileInfo(filePath).suffix().toLower();
-    const FormatCategory category = FormatRegistry::instance().categoryOf(ext);
-    if (category == FormatCategory::Unknown) {
-        QMessageBox::warning(this, QStringLiteral("MagnifyFactory"),
-                              QStringLiteral("Unrecognized file type: %1").arg(ext));
-        return;
-    }
+    addInputFiles({filePath});
+}
 
-    for (int row = 0; row < m_sidebar->count(); ++row) {
-        QListWidgetItem *item = m_sidebar->item(row);
-        if (static_cast<FormatCategory>(item->data(RoleCategory).toInt()) == category) {
-            m_sidebar->setCurrentItem(item);
-            break;
+void MainWindow::addInputFiles(const QStringList &paths) {
+    QHash<FormatCategory, QStringList> byCategory;
+    QStringList unrecognized;
+    for (const QString &path : paths) {
+        const QString ext = QFileInfo(path).suffix().toLower();
+        const FormatCategory category = FormatRegistry::instance().categoryOf(ext);
+        if (category == FormatCategory::Unknown) {
+            unrecognized << QFileInfo(path).fileName();
+        } else {
+            byCategory[category] << path;
         }
     }
 
-    ConvertDialog dialog(filePath, category, this);
-    if (dialog.exec() == QDialog::Accepted && !dialog.selectedFormat().isEmpty()) {
-        enqueueFile(filePath, dialog.selectedFormat(), dialog.selectedParameters());
+    if (!unrecognized.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("MagnifyFactory"),
+                              QStringLiteral("Skipped unrecognized file(s):\n%1").arg(unrecognized.join('\n')));
     }
+
+    // One popup per category, not per file, so dropping a folder full of the
+    // same file type only asks the user once.
+    for (auto it = byCategory.constBegin(); it != byCategory.constEnd(); ++it) {
+        const FormatCategory category = it.key();
+        const QStringList &files = it.value();
+
+        for (int row = 0; row < m_sidebar->count(); ++row) {
+            QListWidgetItem *item = m_sidebar->item(row);
+            if (static_cast<FormatCategory>(item->data(RoleCategory).toInt()) == category) {
+                m_sidebar->setCurrentItem(item);
+                break;
+            }
+        }
+
+        if (category == FormatCategory::Pdf && files.size() > 1) {
+            const auto reply = QMessageBox::question(
+                this, QStringLiteral("MagnifyFactory"),
+                QStringLiteral("Merge these %1 PDFs into a single file, or handle them individually "
+                                "(convert/compress each on its own)?")
+                    .arg(files.size()),
+                QStringLiteral("Merge into one PDF"), QStringLiteral("Handle individually"));
+            if (reply == 0) {
+                mergePdfs(files);
+                continue;
+            }
+        }
+
+        const QString label = files.size() == 1 ? files.first() : QStringLiteral("%1 files").arg(files.size());
+        ConvertDialog dialog(label, category, this);
+        if (dialog.exec() == QDialog::Accepted && !dialog.selectedFormat().isEmpty()) {
+            for (const QString &file : files) {
+                enqueueFile(file, dialog.selectedFormat(), dialog.selectedParameters());
+            }
+        }
+    }
+}
+
+void MainWindow::mergePdfs(const QStringList &pdfPaths) {
+    const QFileInfo firstInfo(pdfPaths.first());
+    const QDir outDir = firstInfo.absoluteDir();
+    QString outputPath = outDir.filePath(QStringLiteral("Merged (%1 files).pdf").arg(pdfPaths.size()));
+    int suffix = 2;
+    while (QFileInfo::exists(outputPath)) {
+        outputPath = outDir.filePath(QStringLiteral("Merged (%1 files) %2.pdf").arg(pdfPaths.size()).arg(suffix++));
+    }
+
+    auto job = std::make_unique<ConversionJob>(pdfPaths.first(), outputPath);
+    job->setExtraInputPaths(pdfPaths.mid(1));
+    job->setSourceFormat(QStringLiteral("pdf"));
+    job->setTargetFormat(QStringLiteral("pdf"));
+    job->setEngineName(QStringLiteral("PDF Tools"));
+    job->setParameters({{QStringLiteral("operation"), QStringLiteral("merge")}});
+
+    m_jobManager->addJob(std::move(job));
+    statusBar()->showMessage(QStringLiteral("Queued: merge %1 PDFs").arg(pdfPaths.size()), 4000);
+}
+
+void MainWindow::addInputFolder() {
+    const QString dir = QFileDialog::getExistingDirectory(this, QStringLiteral("Select folder"));
+    if (dir.isEmpty()) {
+        return;
+    }
+
+    const bool recursive = QMessageBox::question(this, QStringLiteral("MagnifyFactory"),
+                                                   QStringLiteral("Include files in subfolders too?")) ==
+                            QMessageBox::Yes;
+
+    QStringList files;
+    QDirIterator it(dir, QDir::Files,
+                     recursive ? QDirIterator::Subdirectories : QDirIterator::IteratorFlag::NoIteratorFlags);
+    while (it.hasNext()) {
+        files << it.next();
+    }
+
+    if (files.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("MagnifyFactory"), QStringLiteral("No files found in that folder."));
+        return;
+    }
+    addInputFiles(files);
 }
 
 void MainWindow::enqueueFile(const QString &inputPath, const QString &targetExt, const QVariantMap &presetParameters) {
     // Export next to the source file instead of a separate output folder.
     const QFileInfo inputInfo(inputPath);
     const QDir outDir = inputInfo.absoluteDir();
+
+    if (presetParameters.value(QStringLiteral("operation")).toString() == QStringLiteral("split")) {
+        // One PDF -> many; qpdf --split-pages fills in "%d" per output file.
+        const QString outputPath = outDir.filePath(inputInfo.completeBaseName() + QStringLiteral("-page-%d.pdf"));
+        auto job = std::make_unique<ConversionJob>(inputPath, outputPath);
+        job->setSourceFormat(QStringLiteral("pdf"));
+        job->setTargetFormat(QStringLiteral("pdf"));
+        job->setEngineName(QStringLiteral("PDF Tools"));
+        job->setParameters(presetParameters);
+        m_jobManager->addJob(std::move(job));
+        statusBar()->showMessage(QStringLiteral("Queued: split %1").arg(inputInfo.fileName()), 4000);
+        return;
+    }
+
     QString outputPath = outDir.filePath(inputInfo.completeBaseName() + QStringLiteral(".") + targetExt);
 
     // Never let the output overwrite the input file it comes from.

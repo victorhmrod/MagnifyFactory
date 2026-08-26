@@ -13,7 +13,7 @@
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows-0078D6">
   <img alt="language" src="https://img.shields.io/badge/language-C%2B%2B20-blue">
   <img alt="UI" src="https://img.shields.io/badge/UI-Qt6-41CD52">
-  <img alt="license" src="https://img.shields.io/badge/license-MIT-green">
+  <img alt="license" src="https://img.shields.io/badge/license-GPL--3.0-blue">
 </p>
 
 ---
@@ -36,7 +36,8 @@ can be added without touching existing code.
 ## Features
 
 - **Drag-and-drop conversion** — drop a file, pick the target format from a
-  popup, done.
+  popup, done. Drop several at once (or use *Add Folder...*, with an
+  optional recursive scan) and it's one popup per file type, not per file.
 - **Windows context menu integration** — right-click any file → *Convert
   with MagnifyFactory* (see [scripts/](scripts/)).
 - **Real job queue** — configurable concurrency, live progress and ETA,
@@ -57,7 +58,8 @@ can be added without touching existing code.
 - **Images**: PNG, JPEG, WebP, AVIF, BMP, TIFF, GIF.
 - **PDF ↔ image**: render a PDF's first page to PNG/JPEG (Poppler), or embed
   an image losslessly into a single-page PDF.
-- **PDF compress**: recompress embedded images and streams with `qpdf`.
+- **PDF tools**: compress (recompress embedded images/streams), merge several
+  PDFs into one, split one into a file per page — all via `qpdf`.
 - **Output next to the source file** — no separate output folder to manage;
   converted files land beside the original.
 - **Dark, information-dense UI** — a category sidebar and a queue table, no
@@ -67,12 +69,13 @@ can be added without touching existing code.
 
 - [x] PDF ↔ image conversion
 - [x] PDF compress (via `qpdf`)
-- [ ] PDF merge/split (needs multi-file selection in the UI, which doesn't
-      exist yet — single-file drag-and-drop only)
+- [x] PDF merge/split (via `qpdf`)
 - [ ] Documents and archive conversion
 - [x] Hardware-accelerated encoding (NVENC / AMF / Quick Sync)
 - [x] Presets (YouTube, Discord, WhatsApp, MP3/FLAC, WebP/AVIF, PDF compress)
-- [ ] Batch folder processing and watch folders
+- [x] Batch processing (multi-file drop/select, "Add Folder..." with an
+      optional recursive scan; one format popup per file-type group)
+- [ ] Watch folders (auto-convert on file arrival)
 - [ ] `magnify` CLI sharing the same core as the GUI
 - [ ] Plugin API for third-party format/tool modules
 
@@ -199,4 +202,4 @@ Issues and PRs are welcome. Before opening a PR:
 
 ## License
 
-[MIT](LICENSE)
+[GPL-3.0](LICENSE) — Copyright (C) 2026 MagnifyFactory contributors

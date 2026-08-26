@@ -35,8 +35,13 @@ void PdfEngine::startConversion(ConversionJob *job) {
 
     const QString sourceExt = job->sourceFormat().toLower();
     const QString targetExt = job->targetFormat().toLower();
+    const QString operation = job->parameters().value(QStringLiteral("operation")).toString();
 
-    if (sourceExt == QStringLiteral("pdf") && targetExt == QStringLiteral("pdf")) {
+    if (sourceExt == QStringLiteral("pdf") && operation == QStringLiteral("merge")) {
+        mergePdf(job);
+    } else if (sourceExt == QStringLiteral("pdf") && operation == QStringLiteral("split")) {
+        splitPdf(job);
+    } else if (sourceExt == QStringLiteral("pdf") && targetExt == QStringLiteral("pdf")) {
         compressPdf(job);
     } else if (sourceExt == QStringLiteral("pdf")) {
         convertPdfToImage(job);
@@ -156,6 +161,38 @@ void PdfEngine::compressPdf(ConversionJob *job) {
                    // qpdf exits 3 for "warnings only" (still a usable output file).
                    const bool success = (exitStatus == QProcess::NormalExit) && (exitCode == 0 || exitCode == 3) &&
                                          QFileInfo::exists(job->outputPath());
+                   const QString error = success ? QString() : QString::fromUtf8(process->readAllStandardError());
+                   finishJob(job, success, error);
+               });
+}
+
+void PdfEngine::mergePdf(ConversionJob *job) {
+    // `qpdf --empty --pages A B C -- out.pdf` concatenates every page of
+    // A, B, C (in order) into out.pdf; --empty is a required dummy "base"
+    // document since --pages is otherwise meant to select from an existing
+    // one. Omitting a page range after each filename defaults to "all pages".
+    QStringList args{QStringLiteral("--empty"), QStringLiteral("--pages"), job->inputPath()};
+    args << job->extraInputPaths();
+    args << QStringLiteral("--") << job->outputPath();
+
+    runProcess(job, QStringLiteral("qpdf"), args,
+               [this, job](QProcess *process, int exitCode, QProcess::ExitStatus exitStatus) {
+                   const bool success = (exitStatus == QProcess::NormalExit) && (exitCode == 0 || exitCode == 3) &&
+                                        QFileInfo::exists(job->outputPath());
+                   const QString error = success ? QString() : QString::fromUtf8(process->readAllStandardError());
+                   finishJob(job, success, error);
+               });
+}
+
+void PdfEngine::splitPdf(ConversionJob *job) {
+    // job->outputPath() is expected to contain a "%d" page-number
+    // placeholder (MainWindow builds it as "<name>-page-%d.pdf"); qpdf fills
+    // it in per output file and pads the digits to the source's page count.
+    const QStringList args{QStringLiteral("--split-pages"), job->inputPath(), job->outputPath()};
+
+    runProcess(job, QStringLiteral("qpdf"), args,
+               [this, job](QProcess *process, int exitCode, QProcess::ExitStatus exitStatus) {
+                   const bool success = (exitStatus == QProcess::NormalExit) && (exitCode == 0 || exitCode == 3);
                    const QString error = success ? QString() : QString::fromUtf8(process->readAllStandardError());
                    finishJob(job, success, error);
                });

@@ -122,6 +122,75 @@ int main(int argc, char *argv[]) {
                 (long long)after, 100.0 * after / before);
     }
 
+    // Merge: two single-page PDFs (sample_from_png.pdf, noisy.pdf) -> one
+    // 2-page PDF. Uses ConversionJob::extraInputPaths() directly since this
+    // doesn't fit runOneConversion's single-input signature.
+    {
+        const QString mergedPath = dir + "/merged.pdf";
+        auto job = std::make_unique<ConversionJob>(pdfPath, mergedPath);
+        job->setExtraInputPaths({noisyPdfPath});
+        job->setSourceFormat("pdf");
+        job->setTargetFormat("pdf");
+        job->setEngineName("PDF Tools");
+        job->setParameters({{"operation", "merge"}});
+        ConversionJob *raw = manager.addJob(std::move(job));
+
+        QEventLoop loop;
+        bool finished = false, ok = false;
+        QObject::connect(raw, &ConversionJob::statusChanged, &loop, [&](JobStatus status) {
+            if (status == JobStatus::Completed || status == JobStatus::Failed) {
+                finished = true;
+                ok = (status == JobStatus::Completed);
+                loop.quit();
+            }
+        });
+        QTimer::singleShot(30000, &loop, &QEventLoop::quit);
+        manager.startQueue();
+        loop.exec();
+
+        if (finished && ok && QFileInfo::exists(mergedPath)) {
+            fprintf(stderr, "OK: merge produced %s (%lld bytes)\n", qPrintable(mergedPath),
+                    (long long)QFileInfo(mergedPath).size());
+        } else {
+            fprintf(stderr, "FAILED merge: %s\n", qPrintable(raw->errorMessage()));
+            allOk = false;
+        }
+    }
+
+    // Split: the 2-page merged.pdf -> merged-page-1.pdf, merged-page-2.pdf.
+    {
+        const QString mergedPath = dir + "/merged.pdf";
+        const QString pattern = dir + "/merged-page-%d.pdf";
+        auto job = std::make_unique<ConversionJob>(mergedPath, pattern);
+        job->setSourceFormat("pdf");
+        job->setTargetFormat("pdf");
+        job->setEngineName("PDF Tools");
+        job->setParameters({{"operation", "split"}});
+        ConversionJob *raw = manager.addJob(std::move(job));
+
+        QEventLoop loop;
+        bool finished = false, ok = false;
+        QObject::connect(raw, &ConversionJob::statusChanged, &loop, [&](JobStatus status) {
+            if (status == JobStatus::Completed || status == JobStatus::Failed) {
+                finished = true;
+                ok = (status == JobStatus::Completed);
+                loop.quit();
+            }
+        });
+        QTimer::singleShot(30000, &loop, &QEventLoop::quit);
+        manager.startQueue();
+        loop.exec();
+
+        const bool page1 = QFileInfo::exists(dir + "/merged-page-1.pdf");
+        const bool page2 = QFileInfo::exists(dir + "/merged-page-2.pdf");
+        if (finished && ok && page1 && page2) {
+            fprintf(stderr, "OK: split produced merged-page-1.pdf and merged-page-2.pdf\n");
+        } else {
+            fprintf(stderr, "FAILED split (page1=%d page2=%d): %s\n", page1, page2, qPrintable(raw->errorMessage()));
+            allOk = false;
+        }
+    }
+
     qInfo() << (allOk ? "ALL PDF CONVERSIONS SUCCEEDED" : "SOME PDF CONVERSIONS FAILED");
     return allOk ? 0 : 1;
 }
