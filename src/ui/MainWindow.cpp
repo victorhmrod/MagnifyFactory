@@ -288,11 +288,11 @@ void MainWindow::addInputFile(const QString &filePath) {
 
     ConvertDialog dialog(filePath, category, this);
     if (dialog.exec() == QDialog::Accepted && !dialog.selectedFormat().isEmpty()) {
-        enqueueFile(filePath, dialog.selectedFormat());
+        enqueueFile(filePath, dialog.selectedFormat(), dialog.selectedParameters());
     }
 }
 
-void MainWindow::enqueueFile(const QString &inputPath, const QString &targetExt) {
+void MainWindow::enqueueFile(const QString &inputPath, const QString &targetExt, const QVariantMap &presetParameters) {
     // Export next to the source file instead of a separate output folder.
     const QFileInfo inputInfo(inputPath);
     const QDir outDir = inputInfo.absoluteDir();
@@ -306,11 +306,18 @@ void MainWindow::enqueueFile(const QString &inputPath, const QString &targetExt)
     const QString sourceExt = inputInfo.suffix().toLower();
     const bool isPdfJob = sourceExt == QStringLiteral("pdf") || targetExt == QStringLiteral("pdf");
 
+    // The Hardware combo picks a default; a preset's own parameters (if any)
+    // take priority since it was chosen specifically for this conversion.
+    QVariantMap parameters{{QStringLiteral("hardwareBackend"), m_hardwareCombo->currentData()}};
+    for (auto it = presetParameters.constBegin(); it != presetParameters.constEnd(); ++it) {
+        parameters.insert(it.key(), it.value());
+    }
+
     auto job = std::make_unique<ConversionJob>(inputPath, outputPath);
     job->setSourceFormat(sourceExt);
     job->setTargetFormat(targetExt);
     job->setEngineName(isPdfJob ? QStringLiteral("PDF Tools") : QStringLiteral("FFmpeg"));
-    job->setParameters({{QStringLiteral("hardwareBackend"), m_hardwareCombo->currentData()}});
+    job->setParameters(parameters);
 
     m_jobManager->addJob(std::move(job));
     statusBar()->showMessage(QStringLiteral("Queued: %1 → %2").arg(inputInfo.fileName(), targetExt.toUpper()), 4000);

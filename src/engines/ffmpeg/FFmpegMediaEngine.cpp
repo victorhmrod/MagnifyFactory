@@ -31,6 +31,14 @@ void applyVideoEncoder(FFmpegCommandBuilder &builder, const magnify::core::JobPa
         builder.setHardwareEncoder(encoder);
         builder.setVideoBitrate(params.value(QStringLiteral("videoBitrate"), "6000k").toString());
     }
+
+    // Presets (YouTube 1080p, Discord, WhatsApp, ...) request a target
+    // resolution this way; a plain conversion leaves the source resolution
+    // untouched since neither key is present.
+    if (params.contains(QStringLiteral("width")) && params.contains(QStringLiteral("height"))) {
+        builder.setResolution(params.value(QStringLiteral("width")).toInt(),
+                               params.value(QStringLiteral("height")).toInt());
+    }
 }
 } // namespace
 
@@ -55,7 +63,13 @@ QStringList FFmpegMediaEngine::buildArgsForJob(ConversionJob *job, const MediaPr
 
         if (targetExt == QStringLiteral("mp3")) {
             builder.setAudioCodec(QStringLiteral("libmp3lame"));
-            builder.setAudioQuality(params.value(QStringLiteral("audioQuality"), 2).toInt());
+            // A preset asking for an explicit bitrate (e.g. "MP3 320 kbps")
+            // wants CBR; otherwise fall back to VBR quality (-q:a).
+            if (params.contains(QStringLiteral("audioBitrate"))) {
+                builder.setAudioBitrate(params.value(QStringLiteral("audioBitrate")).toString());
+            } else {
+                builder.setAudioQuality(params.value(QStringLiteral("audioQuality"), 2).toInt());
+            }
         } else if (targetExt == QStringLiteral("wav")) {
             builder.setAudioCodec(QStringLiteral("pcm_s16le"));
         } else if (targetExt == QStringLiteral("flac")) {

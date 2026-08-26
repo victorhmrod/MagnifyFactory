@@ -6,8 +6,12 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include "presets/PresetRegistry.h"
+
 using magnify::core::FormatCategory;
 using magnify::core::FormatRegistry;
+using magnify::presets::Preset;
+using magnify::presets::PresetRegistry;
 
 namespace magnify::ui {
 
@@ -40,13 +44,16 @@ ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCateg
     // targets (e.g. a video can be converted straight to an audio format).
     switch (sourceCategory) {
         case FormatCategory::Video:
+            addPresetSection(layout, FormatCategory::Video);
             addFormatSection(layout, QStringLiteral("VIDEO"), FormatCategory::Video);
             addFormatSection(layout, QStringLiteral("EXTRACT AUDIO"), FormatCategory::Audio);
             break;
         case FormatCategory::Audio:
+            addPresetSection(layout, FormatCategory::Audio);
             addFormatSection(layout, QStringLiteral("AUDIO"), FormatCategory::Audio);
             break;
         case FormatCategory::Image:
+            addPresetSection(layout, FormatCategory::Image);
             addFormatSection(layout, QStringLiteral("IMAGE"), FormatCategory::Image);
             addCustomSection(layout, QStringLiteral("DOCUMENT"), {{QStringLiteral("PDF"), QStringLiteral("pdf")}});
             break;
@@ -61,6 +68,7 @@ ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCateg
             // case and runs a qpdf compression pass instead of rendering.
             addCustomSection(layout, QStringLiteral("TOOLS"),
                               {{QStringLiteral("Compress"), QStringLiteral("pdf")}});
+            addPresetSection(layout, FormatCategory::Pdf);
             break;
         default:
             addFormatSection(layout, QStringLiteral("VIDEO"), FormatCategory::Video);
@@ -78,6 +86,39 @@ void ConvertDialog::addFormatSection(QVBoxLayout *layout, const QString &title, 
         }
     }
     addCustomSection(layout, title, formats);
+}
+
+void ConvertDialog::addPresetSection(QVBoxLayout *layout, FormatCategory category) {
+    const QVector<Preset> presets = PresetRegistry::instance().presetsForCategory(category);
+    if (presets.isEmpty()) {
+        return;
+    }
+
+    auto *sectionLabel = new QLabel(QStringLiteral("PRESETS"), this);
+    sectionLabel->setObjectName(QStringLiteral("section"));
+    layout->addWidget(sectionLabel);
+
+    auto *grid = new QGridLayout();
+    grid->setSpacing(8);
+    int col = 0;
+    int row = 0;
+    constexpr int columns = 3;
+    for (const Preset &preset : presets) {
+        auto *button = new QPushButton(preset.name, this);
+        button->setProperty("class", QStringLiteral("formatButton"));
+        button->setCursor(Qt::PointingHandCursor);
+        connect(button, &QPushButton::clicked, this, [this, preset]() {
+            m_selectedFormat = preset.targetFormat;
+            m_selectedParameters = preset.parameters;
+            accept();
+        });
+        grid->addWidget(button, row, col);
+        if (++col >= columns) {
+            col = 0;
+            ++row;
+        }
+    }
+    layout->addLayout(grid);
 }
 
 void ConvertDialog::addCustomSection(QVBoxLayout *layout, const QString &title,

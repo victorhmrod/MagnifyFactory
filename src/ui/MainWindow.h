@@ -2,6 +2,7 @@
 
 #include <QFutureWatcher>
 #include <QMainWindow>
+#include <QVariantMap>
 #include <memory>
 
 #include "core/FormatRegistry.h"
@@ -46,7 +47,7 @@ private:
     void buildUi();
     void applyDarkTheme();
     void addInputFile(const QString &filePath);
-    void enqueueFile(const QString &inputPath, const QString &targetExt);
+    void enqueueFile(const QString &inputPath, const QString &targetExt, const QVariantMap &presetParameters = {});
     void refreshRow(magnify::core::ConversionJob *job);
     void appendRow(magnify::core::ConversionJob *job);
     void onCategorySelected(QListWidgetItem *current);
