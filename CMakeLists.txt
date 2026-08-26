@@ -7,7 +7,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Concurrent)
 qt_standard_project_setup()
 
 set(MAGNIFY_CORE_SOURCES
@@ -68,7 +68,7 @@ add_executable(MagnifyFactory WIN32
     ${MAGNIFY_RESOURCES}
 )
 target_include_directories(MagnifyFactory PRIVATE src)
-target_link_libraries(MagnifyFactory PRIVATE Qt6::Widgets magnify_core magnify_hardware magnify_engines)
+target_link_libraries(MagnifyFactory PRIVATE Qt6::Widgets Qt6::Concurrent magnify_core magnify_hardware magnify_engines)
 
 # Qt cannot start without its "platforms" plugin (qwindows[d].dll). windeployqt
 # isn't available from this vcpkg install, so copy the plugin directly next

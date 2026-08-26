@@ -18,6 +18,7 @@
 #include <QTableWidget>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QtConcurrentRun>
 
 #include "ConvertDialog.h"
 #include "core/ConversionJob.h"
@@ -180,13 +181,17 @@ void MainWindow::buildUi() {
     m_hardwareCombo = new QComboBox(content);
     m_hardwareCombo->addItem(QStringLiteral("Auto"), hardwareVendorToString(HardwareVendor::Auto));
     m_hardwareCombo->addItem(QStringLiteral("CPU"), hardwareVendorToString(HardwareVendor::Cpu));
-    // Verifying each vendor runs a real (tiny) test encode, so this briefly
-    // blocks the UI on first launch; the result is cached for the session.
-    const QList<HardwareVendor> detected = HardwareAccelerationManager::instance().availableVendors();
-    if (detected.contains(HardwareVendor::Nvidia)) m_hardwareCombo->addItem(QStringLiteral("NVIDIA NVENC"), hardwareVendorToString(HardwareVendor::Nvidia));
-    if (detected.contains(HardwareVendor::Amd)) m_hardwareCombo->addItem(QStringLiteral("AMD AMF"), hardwareVendorToString(HardwareVendor::Amd));
-    if (detected.contains(HardwareVendor::Intel)) m_hardwareCombo->addItem(QStringLiteral("Intel Quick Sync"), hardwareVendorToString(HardwareVendor::Intel));
+    m_hardwareCombo->setToolTip(QStringLiteral("Detecting GPU encoders in the background..."));
     controlsRow->addWidget(m_hardwareCombo);
+
+    // GPU-vendor entries are added once background detection finishes (see
+    // ctor); "Auto"/"CPU" already work correctly in the meantime since
+    // HardwareAccelerationManager blocks and waits if a conversion needs an
+    // answer before detection completes.
+    connect(&m_hardwareDetectionWatcher, &QFutureWatcher<void>::finished, this,
+            &MainWindow::onHardwareDetectionFinished);
+    m_hardwareDetectionWatcher.setFuture(
+        QtConcurrent::run([]() { HardwareAccelerationManager::instance().ensureDetected(); }));
 
     controlsRow->addStretch(1);
     contentLayout->addLayout(controlsRow);
@@ -198,6 +203,43 @@ void MainWindow::buildUi() {
     statusBar()->addWidget(m_statusJobsLabel);
 
     onCategorySelected(m_sidebar->currentItem());
+}
+
+void MainWindow::onHardwareDetectionFinished() {
+    populateHardwareCombo();
+}
+
+void MainWindow::populateHardwareCombo() {
+    const QString previousSelection = m_hardwareCombo->currentData().toString();
+    const QList<HardwareVendor> detected = HardwareAccelerationManager::instance().availableVendors();
+
+    if (detected.contains(HardwareVendor::Nvidia)) {
+        m_hardwareCombo->addItem(QStringLiteral("NVIDIA NVENC"), hardwareVendorToString(HardwareVendor::Nvidia));
+    }
+    if (detected.contains(HardwareVendor::Amd)) {
+        m_hardwareCombo->addItem(QStringLiteral("AMD AMF"), hardwareVendorToString(HardwareVendor::Amd));
+    }
+    if (detected.contains(HardwareVendor::Intel)) {
+        m_hardwareCombo->addItem(QStringLiteral("Intel Quick Sync"), hardwareVendorToString(HardwareVendor::Intel));
+    }
+    m_hardwareCombo->setToolTip(QString());
+
+    const int restoredIndex = m_hardwareCombo->findData(previousSelection);
+    if (restoredIndex >= 0) {
+        m_hardwareCombo->setCurrentIndex(restoredIndex);
+    }
+
+    if (detected.size() > 1) {
+        statusBar()->showMessage(QStringLiteral("GPU acceleration available: %1")
+                                      .arg([&] {
+                                          QStringList names;
+                                          for (auto v : detected) {
+                                              if (v != HardwareVendor::Cpu) names << hardwareVendorToString(v).toUpper();
+                                          }
+                                          return names.join(QStringLiteral(", "));
+                                      }()),
+                                  5000);
+    }
 }
 
 void MainWindow::onCategorySelected(QListWidgetItem *current) {

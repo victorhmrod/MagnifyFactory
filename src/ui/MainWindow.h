@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QFutureWatcher>
 #include <QMainWindow>
 #include <memory>
 
@@ -50,6 +51,8 @@ private:
     void appendRow(magnify::core::ConversionJob *job);
     void onCategorySelected(QListWidgetItem *current);
     void updateStatusBar();
+    void populateHardwareCombo();
+    void onHardwareDetectionFinished();
 
     std::unique_ptr<magnify::engines::ffmpeg::FFmpegMediaEngine> m_ffmpegEngine;
     std::unique_ptr<magnify::engines::pdf::PdfEngine> m_pdfEngine;
@@ -62,6 +65,7 @@ private:
     QSpinBox *m_concurrencySpin = nullptr;
     QComboBox *m_hardwareCombo = nullptr;
     QLabel *m_statusJobsLabel = nullptr;
+    QFutureWatcher<void> m_hardwareDetectionWatcher;
 
     magnify::core::FormatCategory m_activeCategory = magnify::core::FormatCategory::Video;
 };

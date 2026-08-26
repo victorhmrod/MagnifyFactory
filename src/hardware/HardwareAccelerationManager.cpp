@@ -70,12 +70,9 @@ bool HardwareAccelerationManager::verifyEncoder(const QString &encoderName) cons
     return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0 && QFileInfo::exists(outputPath);
 }
 
-void HardwareAccelerationManager::detectIfNeeded() {
-    if (m_detected) {
-        return;
-    }
-    m_detected = true;
-
+void HardwareAccelerationManager::detectLocked() {
+    // Caller already holds m_mutex. Runs several real ffmpeg processes, so
+    // this is the slow part callers should keep off the UI thread.
     for (HardwareVendor vendor : {HardwareVendor::Nvidia, HardwareVendor::Amd, HardwareVendor::Intel}) {
         for (const QString &codecFamily : {QStringLiteral("h264"), QStringLiteral("hevc")}) {
             const QString encoder = candidateEncoder(vendor, codecFamily);
@@ -83,10 +80,19 @@ void HardwareAccelerationManager::detectIfNeeded() {
             m_verifiedEncoders.insert(key, verifyEncoder(encoder) ? encoder : QString());
         }
     }
+    m_detected = true;
+}
+
+void HardwareAccelerationManager::ensureDetected() {
+    QMutexLocker locker(&m_mutex);
+    if (!m_detected) {
+        detectLocked();
+    }
 }
 
 QList<HardwareVendor> HardwareAccelerationManager::availableVendors(const QString &codecFamily) {
-    detectIfNeeded();
+    ensureDetected();
+    QMutexLocker locker(&m_mutex);
     QList<HardwareVendor> result{HardwareVendor::Cpu};
     for (HardwareVendor vendor : {HardwareVendor::Nvidia, HardwareVendor::Amd, HardwareVendor::Intel}) {
         const QString key = hardwareVendorToString(vendor) + QStringLiteral(":") + codecFamily;
@@ -98,12 +104,14 @@ QList<HardwareVendor> HardwareAccelerationManager::availableVendors(const QStrin
 }
 
 QString HardwareAccelerationManager::encoderFor(HardwareVendor vendor, const QString &codecFamily) {
-    detectIfNeeded();
+    ensureDetected();
     const QString cpuEncoder = codecFamily == QStringLiteral("hevc") ? QStringLiteral("libx265") : QStringLiteral("libx264");
 
     if (vendor == HardwareVendor::Cpu) {
         return cpuEncoder;
     }
+
+    QMutexLocker locker(&m_mutex);
     if (vendor == HardwareVendor::Auto) {
         for (HardwareVendor candidate : {HardwareVendor::Nvidia, HardwareVendor::Amd, HardwareVendor::Intel}) {
             const QString key = hardwareVendorToString(candidate) + QStringLiteral(":") + codecFamily;
