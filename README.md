@@ -50,6 +50,7 @@ can be added without touching existing code.
 - **Images**: PNG, JPEG, WebP, AVIF, BMP, TIFF, GIF.
 - **PDF ↔ image**: render a PDF's first page to PNG/JPEG (Poppler), or embed
   an image losslessly into a single-page PDF.
+- **PDF compress**: recompress embedded images and streams with `qpdf`.
 - **Output next to the source file** — no separate output folder to manage;
   converted files land beside the original.
 - **Dark, information-dense UI** — a category sidebar and a queue table, no
@@ -58,7 +59,9 @@ can be added without touching existing code.
 ## Roadmap
 
 - [x] PDF ↔ image conversion
-- [ ] PDF merge/split/compress (via the `qpdf` CLI — not wired up yet)
+- [x] PDF compress (via `qpdf`)
+- [ ] PDF merge/split (needs multi-file selection in the UI, which doesn't
+      exist yet — single-file drag-and-drop only)
 - [ ] Documents and archive conversion
 - [ ] Hardware-accelerated encoding (NVENC / AMF / Quick Sync)
 - [ ] Presets (YouTube, Discord, WhatsApp, Instagram, ...)
@@ -78,6 +81,7 @@ MagnifyFactory shells out to external tools rather than bundling them —
 make sure these are on your `PATH`:
 - `ffmpeg` / `ffprobe` (e.g. `winget install Gyan.FFmpeg`) for video/audio/image conversion
 - `pdftoppm` from Poppler (e.g. `winget install oschwartz10612.Poppler`) for PDF → image
+- `qpdf` (e.g. `winget install QPDF.QPDF`) for PDF compression
 
 ## Building from source
 
@@ -92,6 +96,7 @@ make sure these are on your `PATH`:
   MagnifyFactory shells out to these rather than linking libav directly
 - [Poppler](https://github.com/oschwartz10612/poppler-windows) (`pdftoppm`
   on your `PATH`) for PDF → image rendering
+- [QPDF](https://qpdf.readthedocs.io/) (`qpdf` on your `PATH`) for PDF compression
 
 ### Get Qt6
 

@@ -36,7 +36,9 @@ void PdfEngine::startConversion(ConversionJob *job) {
     const QString sourceExt = job->sourceFormat().toLower();
     const QString targetExt = job->targetFormat().toLower();
 
-    if (sourceExt == QStringLiteral("pdf")) {
+    if (sourceExt == QStringLiteral("pdf") && targetExt == QStringLiteral("pdf")) {
+        compressPdf(job);
+    } else if (sourceExt == QStringLiteral("pdf")) {
         convertPdfToImage(job);
     } else if (targetExt == QStringLiteral("pdf")) {
         convertImageToPdf(job);
@@ -136,6 +138,34 @@ void PdfEngine::convertImageToPdf(ConversionJob *job) {
 
     process->start(QStringLiteral("ffmpeg"),
                     {QStringLiteral("-y"), QStringLiteral("-i"), job->inputPath(), tempJpegPath});
+}
+
+void PdfEngine::compressPdf(ConversionJob *job) {
+    const int jpegQuality = job->parameters().value(QStringLiteral("jpegQuality"), 60).toInt();
+    const QStringList args{
+        QStringLiteral("--optimize-images"),
+        QStringLiteral("--jpeg-quality=%1").arg(jpegQuality),
+        QStringLiteral("--compress-streams=y"),
+        QStringLiteral("--object-streams=generate"),
+        job->inputPath(),
+        job->outputPath(),
+    };
+
+    auto *process = new QProcess(this);
+    m_runningProcesses.insert(job->id(), process);
+
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, job, process](int exitCode, QProcess::ExitStatus exitStatus) {
+                // qpdf exits 3 for "warnings only" (still a usable output file).
+                const bool success = (exitStatus == QProcess::NormalExit) && (exitCode == 0 || exitCode == 3) &&
+                                      QFileInfo::exists(job->outputPath());
+                const QString error = success ? QString() : QString::fromUtf8(process->readAllStandardError());
+                m_runningProcesses.remove(job->id());
+                process->deleteLater();
+                finishJob(job, success, error);
+            });
+
+    process->start(QStringLiteral("qpdf"), args);
 }
 
 void PdfEngine::finishJob(ConversionJob *job, bool success, const QString &errorMessage) {

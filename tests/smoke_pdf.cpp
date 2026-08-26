@@ -7,6 +7,7 @@
 #include <QEventLoop>
 #include <QImage>
 #include <QImageReader>
+#include <QRandomGenerator>
 #include <QTimer>
 #include <QDebug>
 
@@ -96,6 +97,30 @@ int main(int argc, char *argv[]) {
     // PDF -> JPG as well, for format coverage
     const QString roundtripJpgPath = dir + "/sample_roundtrip.jpg";
     allOk &= runOneConversion(manager, pdfPath, roundtripJpgPath, "pdf", "jpg", "PDF Tools");
+
+    // PDF -> PDF (compress): build a noisy, high-entropy source image first so
+    // a quality-reduced JPEG recompression actually shrinks the file.
+    QImage noisy(1200, 900, QImage::Format_RGB32);
+    for (int y = 0; y < noisy.height(); ++y) {
+        for (int x = 0; x < noisy.width(); ++x) {
+            noisy.setPixel(x, y,
+                           qRgb(QRandomGenerator::global()->bounded(256), QRandomGenerator::global()->bounded(256),
+                                QRandomGenerator::global()->bounded(256)));
+        }
+    }
+    const QString noisyPngPath = dir + "/noisy.png";
+    noisy.save(noisyPngPath, "PNG");
+    const QString noisyPdfPath = dir + "/noisy.pdf";
+    allOk &= runOneConversion(manager, noisyPngPath, noisyPdfPath, "png", "pdf", "PDF Tools");
+
+    const QString compressedPdfPath = dir + "/noisy_compressed.pdf";
+    allOk &= runOneConversion(manager, noisyPdfPath, compressedPdfPath, "pdf", "pdf", "PDF Tools");
+    if (QFileInfo::exists(noisyPdfPath) && QFileInfo::exists(compressedPdfPath)) {
+        const qint64 before = QFileInfo(noisyPdfPath).size();
+        const qint64 after = QFileInfo(compressedPdfPath).size();
+        fprintf(stderr, "Compress: %lld bytes -> %lld bytes (%.1f%% of original)\n", (long long)before,
+                (long long)after, 100.0 * after / before);
+    }
 
     qInfo() << (allOk ? "ALL PDF CONVERSIONS SUCCEEDED" : "SOME PDF CONVERSIONS FAILED");
     return allOk ? 0 : 1;

@@ -57,6 +57,10 @@ ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCateg
             addCustomSection(layout, QStringLiteral("IMAGE (page 1)"),
                               {{QStringLiteral("PNG"), QStringLiteral("png")},
                                {QStringLiteral("JPEG"), QStringLiteral("jpg")}});
+            // Same extension in and out — PdfEngine detects this pdf->pdf
+            // case and runs a qpdf compression pass instead of rendering.
+            addCustomSection(layout, QStringLiteral("TOOLS"),
+                              {{QStringLiteral("Compress"), QStringLiteral("pdf")}});
             break;
         default:
             addFormatSection(layout, QStringLiteral("VIDEO"), FormatCategory::Video);
