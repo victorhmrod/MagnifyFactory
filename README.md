@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/victorhmrod/MagnifyFactory/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/victorhmrod/MagnifyFactory/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows-0078D6">
   <img alt="language" src="https://img.shields.io/badge/language-C%2B%2B20-blue">
   <img alt="UI" src="https://img.shields.io/badge/UI-Qt6-41CD52">
@@ -261,6 +262,11 @@ Issues and PRs are welcome. Before opening a PR:
 1. Build in Debug and run `ctest` — all tests should pass.
 2. Keep conversion logic out of UI code; it belongs in `core/` or `engines/`.
 3. New formats go through `FormatRegistry`, not hardcoded extension checks.
+
+[CI](.github/workflows/ci.yml) builds the GUI, CLI, and unit tests, and runs
+`ctest` on every push/PR. The `smoke_*` targets shell out to real external
+tools (ffmpeg, qpdf, 7z, soffice) and aren't part of CI — run those manually
+when touching an engine.
 
 ## License
 
