@@ -186,6 +186,22 @@ config and packages it in one step:
 The output lands at `dist/MagnifyFactory-Setup-<version>.exe`. See
 [installer/MagnifyFactory.iss](installer/MagnifyFactory.iss).
 
+Unsigned installers show "Unknown publisher" in Microsoft Defender
+SmartScreen. To publish with a trusted publisher, sign the app and installer
+with an OV or EV code-signing certificate:
+
+```powershell
+$env:SIGN_CERT_PATH = "C:\path\to\certificate.pfx"
+$env:SIGN_CERT_PASSWORD = "<certificate password>"
+./scripts/build_installer.ps1
+```
+
+The script signs `build-release\MagnifyFactory.exe` before packaging and
+`dist\MagnifyFactory-Setup-<version>.exe` after packaging. A new certificate
+or binary can still need reputation before SmartScreen stops warning entirely,
+but the dialog will no longer show an unknown publisher once the signature is
+valid.
+
 ## Windows context menu integration
 
 The installer offers this as an opt-in checkbox during setup, registered
