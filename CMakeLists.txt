@@ -44,6 +44,8 @@ set(MAGNIFY_ENGINE_SOURCES
     src/engines/pdf/PdfEngine.cpp
     src/engines/archive/ArchiveEngine.h
     src/engines/archive/ArchiveEngine.cpp
+    src/engines/document/DocumentEngine.h
+    src/engines/document/DocumentEngine.cpp
 )
 
 set(MAGNIFY_WATCH_SOURCES

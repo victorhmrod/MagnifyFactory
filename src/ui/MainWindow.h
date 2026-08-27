@@ -22,6 +22,7 @@ QT_END_NAMESPACE
 namespace magnify::engines::ffmpeg { class FFmpegMediaEngine; }
 namespace magnify::engines::pdf { class PdfEngine; }
 namespace magnify::engines::archive { class ArchiveEngine; }
+namespace magnify::engines::document { class DocumentEngine; }
 namespace magnify::core { class JobManager; class ConversionJob; }
 namespace magnify::watch { class WatchFolderManager; struct WatchRule; }
 namespace magnify::plugins { class PluginManager; }
@@ -71,6 +72,7 @@ private:
     std::unique_ptr<magnify::engines::ffmpeg::FFmpegMediaEngine> m_ffmpegEngine;
     std::unique_ptr<magnify::engines::pdf::PdfEngine> m_pdfEngine;
     std::unique_ptr<magnify::engines::archive::ArchiveEngine> m_archiveEngine;
+    std::unique_ptr<magnify::engines::document::DocumentEngine> m_documentEngine;
     std::unique_ptr<magnify::core::JobManager> m_jobManager;
     std::unique_ptr<magnify::watch::WatchFolderManager> m_watchFolderManager;
     std::unique_ptr<magnify::plugins::PluginManager> m_pluginManager;

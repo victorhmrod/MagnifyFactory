@@ -29,6 +29,7 @@
 #include "core/FormatRegistry.h"
 #include "core/JobManager.h"
 #include "engines/archive/ArchiveEngine.h"
+#include "engines/document/DocumentEngine.h"
 #include "engines/ffmpeg/FFmpegMediaEngine.h"
 #include "engines/pdf/PdfEngine.h"
 #include "hardware/HardwareAccelerationManager.h"
@@ -73,10 +74,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_ffmpegEngine = std::make_unique<magnify::engines::ffmpeg::FFmpegMediaEngine>();
     m_pdfEngine = std::make_unique<magnify::engines::pdf::PdfEngine>();
     m_archiveEngine = std::make_unique<magnify::engines::archive::ArchiveEngine>();
+    m_documentEngine = std::make_unique<magnify::engines::document::DocumentEngine>();
     m_jobManager = std::make_unique<JobManager>();
     m_jobManager->registerEngine(m_ffmpegEngine.get());
     m_jobManager->registerEngine(m_pdfEngine.get());
     m_jobManager->registerEngine(m_archiveEngine.get());
+    m_jobManager->registerEngine(m_documentEngine.get());
     m_watchFolderManager = std::make_unique<WatchFolderManager>();
     connect(m_watchFolderManager.get(), &WatchFolderManager::fileDetected, this, &MainWindow::onWatchedFileDetected);
 
@@ -135,6 +138,7 @@ void MainWindow::buildUi() {
     addCategoryItem(QStringLiteral("🎵  Audio"), FormatCategory::Audio);
     addCategoryItem(QStringLiteral("🖼  Images"), FormatCategory::Image);
     addCategoryItem(QStringLiteral("📄  PDF"), FormatCategory::Pdf);
+    addCategoryItem(QStringLiteral("📝  Documents"), FormatCategory::Document);
     addCategoryItem(QStringLiteral("🗜  Archive"), FormatCategory::Archive);
     m_sidebar->setCurrentRow(0);
     connect(m_sidebar, &QListWidget::currentItemChanged, this,
@@ -508,6 +512,15 @@ void MainWindow::enqueueFile(const QString &inputPath, const QString &targetExt,
 
     const QString sourceExt = inputInfo.suffix().toLower();
     const bool isPdfJob = sourceExt == QStringLiteral("pdf") || targetExt == QStringLiteral("pdf");
+    const bool isDocumentJob = FormatRegistry::instance().categoryOf(sourceExt) == FormatCategory::Document ||
+                                FormatRegistry::instance().categoryOf(targetExt) == FormatCategory::Document;
+
+    QString engineName = QStringLiteral("FFmpeg");
+    if (isDocumentJob) {
+        engineName = QStringLiteral("Document Tools");
+    } else if (isPdfJob) {
+        engineName = QStringLiteral("PDF Tools");
+    }
 
     // The Hardware combo picks a default; a preset's own parameters (if any)
     // take priority since it was chosen specifically for this conversion.
@@ -519,7 +532,7 @@ void MainWindow::enqueueFile(const QString &inputPath, const QString &targetExt,
     auto job = std::make_unique<ConversionJob>(inputPath, outputPath);
     job->setSourceFormat(sourceExt);
     job->setTargetFormat(targetExt);
-    job->setEngineName(isPdfJob ? QStringLiteral("PDF Tools") : QStringLiteral("FFmpeg"));
+    job->setEngineName(engineName);
     job->setParameters(parameters);
 
     m_jobManager->addJob(std::move(job));

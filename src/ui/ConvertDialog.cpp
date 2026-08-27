@@ -70,6 +70,13 @@ ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCateg
                               {{QStringLiteral("Compress"), QStringLiteral("pdf")}});
             addPresetSection(layout, FormatCategory::Pdf);
             break;
+        case FormatCategory::Document:
+            // Documents mostly convert to PDF, but LibreOffice's headless
+            // --convert-to also handles cross-format document conversion
+            // (e.g. docx -> odt), so offer the full Document category too.
+            addCustomSection(layout, QStringLiteral("PDF"), {{QStringLiteral("PDF"), QStringLiteral("pdf")}});
+            addFormatSection(layout, QStringLiteral("DOCUMENT"), FormatCategory::Document);
+            break;
         default:
             addFormatSection(layout, QStringLiteral("VIDEO"), FormatCategory::Video);
             addFormatSection(layout, QStringLiteral("AUDIO"), FormatCategory::Audio);

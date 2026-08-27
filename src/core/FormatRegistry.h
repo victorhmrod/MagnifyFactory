@@ -12,6 +12,7 @@ enum class FormatCategory {
     Image,
     Pdf,
     Archive,
+    Document,
     Unknown
 };
 

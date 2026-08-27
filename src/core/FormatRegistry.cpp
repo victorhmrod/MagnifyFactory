@@ -47,6 +47,27 @@ void FormatRegistry::registerBuiltins() {
     // --- PDF -----------------------------------------------------------------
     registerFormat({"PDF", "pdf", FormatCategory::Pdf, {"application/pdf"}, true, true});
 
+    // --- Documents (LibreOffice headless) ---------------------------------------
+    registerFormat({"Word (docx)", "docx", FormatCategory::Document,
+                     {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"}, true, true});
+    registerFormat({"Word 97-2003 (doc)", "doc", FormatCategory::Document, {"application/msword"}, true, true});
+    registerFormat({"Excel (xlsx)", "xlsx", FormatCategory::Document,
+                     {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}, true, true});
+    registerFormat({"Excel 97-2003 (xls)", "xls", FormatCategory::Document, {"application/vnd.ms-excel"}, true,
+                     true});
+    registerFormat({"PowerPoint (pptx)", "pptx", FormatCategory::Document,
+                     {"application/vnd.openxmlformats-officedocument.presentationml.presentation"}, true, true});
+    registerFormat({"PowerPoint 97-2003 (ppt)", "ppt", FormatCategory::Document,
+                     {"application/vnd.ms-powerpoint"}, true, true});
+    registerFormat({"OpenDocument Text", "odt", FormatCategory::Document, {"application/vnd.oasis.opendocument.text"},
+                     true, true});
+    registerFormat({"OpenDocument Spreadsheet", "ods", FormatCategory::Document,
+                     {"application/vnd.oasis.opendocument.spreadsheet"}, true, true});
+    registerFormat({"OpenDocument Presentation", "odp", FormatCategory::Document,
+                     {"application/vnd.oasis.opendocument.presentation"}, true, true});
+    registerFormat({"Rich Text", "rtf", FormatCategory::Document, {"application/rtf"}, true, true});
+    registerFormat({"Plain Text", "txt", FormatCategory::Document, {"text/plain"}, true, true});
+
     // --- Archives --------------------------------------------------------------
     // zip/7z can be created by 7-Zip; rar/tar/gz are extraction-only (creating a
     // proprietary .rar isn't something 7-Zip's free CLI can do).

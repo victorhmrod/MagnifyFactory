@@ -6,7 +6,7 @@
 
 <p align="center">
   A fast, native, modular file conversion desktop app for Windows.<br>
-  Video, audio, and images today — PDF, documents, and archives are on the roadmap.
+  Video, audio, images, PDF, documents, and archives — all in one place.
 </p>
 
 <p align="center">
@@ -67,6 +67,9 @@ can be added without touching existing code.
   (settle delay, so a still-copying file isn't grabbed mid-write).
 - **Archive tools** — extract zip/7z/rar/tar/gz with a click, or select
   multiple files of any type and compress them into a zip, via 7-Zip.
+- **Document conversion**: Word (docx/doc), Excel (xlsx/xls), PowerPoint
+  (pptx/ppt), OpenDocument (odt/ods/odp), RTF, and plain text — convert to
+  PDF or between each other, via LibreOffice's headless CLI.
 - **Plugin API** — drop a `.dll` implementing `IMagnifyPlugin` into
   `plugins/` next to the executable and it's loaded at startup; today a
   plugin contributes presets. See [Plugins](#plugins).
@@ -81,7 +84,7 @@ can be added without touching existing code.
 - [x] PDF compress (via `qpdf`)
 - [x] PDF merge/split (via `qpdf`)
 - [x] Archive tools (extract zip/7z/rar/tar/gz, create zip/7z)
-- [ ] Document conversion (docx/xlsx/pptx ↔ PDF, etc.)
+- [x] Document conversion (docx/xlsx/pptx ↔ PDF, etc., via LibreOffice)
 - [x] Hardware-accelerated encoding (NVENC / AMF / Quick Sync)
 - [x] Presets (YouTube, Discord, WhatsApp, MP3/FLAC, WebP/AVIF, PDF compress)
 - [x] Batch processing (multi-file drop/select, "Add Folder..." with an
@@ -104,6 +107,8 @@ make sure these are on your `PATH`:
 - `pdftoppm` from Poppler (e.g. `winget install oschwartz10612.Poppler`) for PDF → image
 - `qpdf` (e.g. `winget install QPDF.QPDF`) for PDF compression
 - `7z` (e.g. `winget install 7zip.7zip`) for archive extract/create
+- `soffice` from [LibreOffice](https://www.libreoffice.org/) (e.g.
+  `winget install TheDocumentFoundation.LibreOffice`) for document conversion
 
 ## Building from source
 
@@ -120,6 +125,8 @@ make sure these are on your `PATH`:
   on your `PATH`) for PDF → image rendering
 - [QPDF](https://qpdf.readthedocs.io/) (`qpdf` on your `PATH`) for PDF compression
 - [7-Zip](https://www.7-zip.org/) (`7z` on your `PATH`) for archive tools
+- [LibreOffice](https://www.libreoffice.org/) (`soffice` on your `PATH`, or
+  installed at its default location) for document conversion
 
 ### Get Qt6
 
@@ -191,6 +198,9 @@ magnify convert --list-presets
 magnify pdf document.pdf --to png --dpi 300
 magnify pdf a.pdf b.pdf c.pdf --merge -o combined.pdf
 magnify pdf document.pdf --split
+
+magnify convert report.docx --to pdf
+magnify convert sheet.xlsx --to ods
 ```
 
 Run `magnify <command> --help` for the full option list.
@@ -239,6 +249,7 @@ Key pieces:
 | [`PresetRegistry`](src/presets/PresetRegistry.h) | Built-in + user-supplied presets — a name mapped to a target format and a bundle of engine parameters. |
 | [`WatchFolderManager`](src/watch/WatchFolderManager.h) | Monitors folders via `QFileSystemWatcher`, debounces new files with a settle delay, reports them for conversion. |
 | [`ArchiveEngine`](src/engines/archive/ArchiveEngine.h) | Extract/create zip/7z/rar/tar/gz via the 7-Zip CLI. |
+| [`DocumentEngine`](src/engines/document/DocumentEngine.h) | Converts docx/xlsx/pptx/odt/ods/odp/rtf/txt to PDF or each other via LibreOffice's headless CLI. |
 | [`PluginManager`](src/plugins/PluginManager.h) | Loads `IMagnifyPlugin` DLLs from `plugins/` via `QPluginLoader`, merges what they contribute into the core registries. |
 
 ## Contributing

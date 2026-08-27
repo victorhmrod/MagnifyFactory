@@ -10,12 +10,16 @@
 #include <QTextStream>
 
 #include "core/ConversionJob.h"
+#include "core/FormatRegistry.h"
 #include "core/JobManager.h"
+#include "engines/document/DocumentEngine.h"
 #include "engines/ffmpeg/FFmpegMediaEngine.h"
 #include "engines/pdf/PdfEngine.h"
 #include "presets/PresetRegistry.h"
 
 using magnify::core::ConversionJob;
+using magnify::core::FormatCategory;
+using magnify::core::FormatRegistry;
 using magnify::core::JobManager;
 using magnify::core::JobStatus;
 using magnify::presets::PresetRegistry;
@@ -151,9 +155,11 @@ int runConvert(const QStringList &args, bool isPdfCommand) {
 
     magnify::engines::ffmpeg::FFmpegMediaEngine ffmpegEngine;
     magnify::engines::pdf::PdfEngine pdfEngine;
+    magnify::engines::document::DocumentEngine documentEngine;
     JobManager manager;
     manager.registerEngine(&ffmpegEngine);
     manager.registerEngine(&pdfEngine);
+    manager.registerEngine(&documentEngine);
     manager.setMaxConcurrentJobs(parser.value(concurrencyOption).toInt());
 
     if (isPdfCommand && parser.isSet(mergeOption)) {
@@ -228,8 +234,12 @@ int runConvert(const QStringList &args, bool isPdfCommand) {
     params["hardwareBackend"] = parser.value(hardwareOption);
 
     const bool isPdfJob = files.first().endsWith(".pdf", Qt::CaseInsensitive) || targetExt == "pdf";
-    enqueueConversions(manager, files, targetExt, params, parser.value(outputDirOption),
-                        isPdfJob ? "PDF Tools" : "FFmpeg");
+    const bool isDocumentJob =
+        FormatRegistry::instance().categoryOf(QFileInfo(files.first()).suffix().toLower()) ==
+            FormatCategory::Document ||
+        FormatRegistry::instance().categoryOf(targetExt) == FormatCategory::Document;
+    const QString engineName = isDocumentJob ? "Document Tools" : (isPdfJob ? "PDF Tools" : "FFmpeg");
+    enqueueConversions(manager, files, targetExt, params, parser.value(outputDirOption), engineName);
 
     return runQueueToCompletion(manager) ? 0 : 1;
 }
