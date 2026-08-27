@@ -42,7 +42,10 @@ can be added without touching existing code.
 - **Windows context menu integration** — right-click any file → *Convert
   with MagnifyFactory* (see [scripts/](scripts/)).
 - **Real job queue** — configurable concurrency, live progress and ETA,
-  pause/cancel, structured failure dialogs (not raw FFmpeg stderr).
+  drag-and-drop reordering, structured failure dialogs (not raw FFmpeg
+  stderr). Right-click a row to retry a failed job, pause/resume a queued
+  one, cancel, remove, or inspect its media info (duration, resolution,
+  codec, bitrate).
 - **Smart remux** — skips re-encoding when the source codec is already
   compatible with the target container (e.g. MKV H.264/AAC → MP4 is a
   stream copy, not a re-encode).

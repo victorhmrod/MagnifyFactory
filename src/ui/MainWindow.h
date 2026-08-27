@@ -72,6 +72,10 @@ private:
     void onWatchedFileDetected(const QString &filePath, const magnify::watch::WatchRule &rule);
     void loadSettings();
     void saveSettings();
+    void showQueueContextMenu(const QPoint &pos);
+    void showMediaInfo(const QUuid &jobId);
+    void onQueueRowsMoved();
+    void removeRowForJob(const QUuid &jobId);
 
     std::unique_ptr<magnify::engines::ffmpeg::FFmpegMediaEngine> m_ffmpegEngine;
     std::unique_ptr<magnify::engines::pdf::PdfEngine> m_pdfEngine;

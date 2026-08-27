@@ -27,7 +27,14 @@ public:
     void removeJob(const QUuid &jobId);
     void cancelJob(const QUuid &jobId);
     void retryJob(const QUuid &jobId);
+    void pauseJob(const QUuid &jobId);
+    void resumeJob(const QUuid &jobId);
     ConversionJob *duplicateJob(const QUuid &jobId);
+
+    // Reorders m_jobs to match orderedIds (as dragged in the UI); any job id
+    // not present in orderedIds keeps its relative position at the end. Does
+    // not touch job status — this only changes scheduling priority.
+    void setJobOrder(const QList<QUuid> &orderedIds);
 
     void setMaxConcurrentJobs(int max);
     int maxConcurrentJobs() const { return m_maxConcurrentJobs; }

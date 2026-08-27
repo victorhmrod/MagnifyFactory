@@ -8,6 +8,10 @@ add_executable(test_format_registry test_format_registry.cpp)
 target_link_libraries(test_format_registry PRIVATE Qt6::Test magnify_core)
 add_test(NAME test_format_registry COMMAND test_format_registry)
 
+add_executable(test_job_manager test_job_manager.cpp)
+target_link_libraries(test_job_manager PRIVATE Qt6::Test magnify_core magnify_engines)
+add_test(NAME test_job_manager COMMAND test_job_manager)
+
 # Manual end-to-end smoke test (real ffmpeg process, not part of ctest).
 add_executable(smoke_convert smoke_convert.cpp)
 target_link_libraries(smoke_convert PRIVATE Qt6::Core magnify_core magnify_engines)

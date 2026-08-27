@@ -14,6 +14,7 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QCloseEvent>
+#include <QMenu>
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPushButton>
@@ -33,6 +34,7 @@
 #include "engines/archive/ArchiveEngine.h"
 #include "engines/document/DocumentEngine.h"
 #include "engines/ffmpeg/FFmpegMediaEngine.h"
+#include "engines/ffmpeg/FFprobe.h"
 #include "engines/pdf/PdfEngine.h"
 #include "hardware/HardwareAccelerationManager.h"
 #include "plugins/PluginManager.h"
@@ -96,6 +98,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     buildUi();
 
     connect(m_jobManager.get(), &JobManager::jobAdded, this, &MainWindow::appendRow);
+    connect(m_jobManager.get(), &JobManager::jobRemoved, this, &MainWindow::removeRowForJob);
     connect(m_jobManager.get(), &JobManager::queueChanged, this, &MainWindow::updateStatusBar);
 
     loadSettings();
@@ -187,6 +190,12 @@ void MainWindow::buildUi() {
     m_queueTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_queueTable->setShowGrid(false);
     m_queueTable->setAlternatingRowColors(false);
+    m_queueTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_queueTable->setDragDropMode(QAbstractItemView::InternalMove);
+    m_queueTable->setDragDropOverwriteMode(false);
+    m_queueTable->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_queueTable, &QTableWidget::customContextMenuRequested, this, &MainWindow::showQueueContextMenu);
+    connect(m_queueTable->model(), &QAbstractItemModel::rowsMoved, this, &MainWindow::onQueueRowsMoved);
     contentLayout->addWidget(m_queueTable, 2);
 
     // --- Queue controls -----------------------------------------------------
@@ -635,6 +644,97 @@ void MainWindow::saveSettings() {
 void MainWindow::closeEvent(QCloseEvent *event) {
     saveSettings();
     QMainWindow::closeEvent(event);
+}
+
+void MainWindow::removeRowForJob(const QUuid &jobId) {
+    for (int row = 0; row < m_queueTable->rowCount(); ++row) {
+        if (m_queueTable->item(row, ColumnFile)->data(RoleJobId).toUuid() == jobId) {
+            m_queueTable->removeRow(row);
+            return;
+        }
+    }
+}
+
+void MainWindow::onQueueRowsMoved() {
+    QList<QUuid> order;
+    order.reserve(m_queueTable->rowCount());
+    for (int row = 0; row < m_queueTable->rowCount(); ++row) {
+        order << m_queueTable->item(row, ColumnFile)->data(RoleJobId).toUuid();
+    }
+    m_jobManager->setJobOrder(order);
+}
+
+void MainWindow::showQueueContextMenu(const QPoint &pos) {
+    QTableWidgetItem *item = m_queueTable->itemAt(pos);
+    if (!item) {
+        return;
+    }
+    const QUuid jobId = m_queueTable->item(item->row(), ColumnFile)->data(RoleJobId).toUuid();
+    ConversionJob *job = m_jobManager->findJob(jobId);
+    if (!job) {
+        return;
+    }
+
+    QMenu menu(this);
+    const JobStatus status = job->status();
+
+    if (status == JobStatus::Failed || status == JobStatus::Cancelled) {
+        menu.addAction(QStringLiteral("Retry"), this, [this, jobId]() {
+            m_jobManager->retryJob(jobId);
+            m_jobManager->startQueue();
+        });
+    }
+    if (status == JobStatus::Queued) {
+        menu.addAction(QStringLiteral("Pause"), this, [this, jobId]() { m_jobManager->pauseJob(jobId); });
+    }
+    if (status == JobStatus::Paused) {
+        menu.addAction(QStringLiteral("Resume"), this, [this, jobId]() { m_jobManager->resumeJob(jobId); });
+    }
+    if (status == JobStatus::Running || status == JobStatus::Queued || status == JobStatus::Paused) {
+        menu.addAction(QStringLiteral("Cancel"), this, [this, jobId]() { m_jobManager->cancelJob(jobId); });
+    }
+    menu.addAction(QStringLiteral("Media Info..."), this, [this, jobId]() { showMediaInfo(jobId); });
+    menu.addSeparator();
+    menu.addAction(QStringLiteral("Remove from queue"), this, [this, jobId]() { m_jobManager->removeJob(jobId); });
+
+    menu.exec(m_queueTable->viewport()->mapToGlobal(pos));
+}
+
+void MainWindow::showMediaInfo(const QUuid &jobId) {
+    ConversionJob *job = m_jobManager->findJob(jobId);
+    if (!job) {
+        return;
+    }
+
+    const QFileInfo info(job->inputPath());
+    QString text = QStringLiteral("File: %1\nSize: %2 MB\n")
+                       .arg(info.fileName())
+                       .arg(info.size() / 1024.0 / 1024.0, 0, 'f', 2);
+
+    const FormatCategory category = FormatRegistry::instance().categoryOf(info.suffix().toLower());
+    if (category == FormatCategory::Video || category == FormatCategory::Audio) {
+        const auto probe = magnify::engines::ffmpeg::FFprobe::probe(job->inputPath());
+        if (probe.valid) {
+            text += QStringLiteral("Duration: %1 s\n").arg(probe.durationSeconds, 0, 'f', 1);
+            if (category == FormatCategory::Video) {
+                text += QStringLiteral("Resolution: %1x%2\n").arg(probe.width).arg(probe.height);
+                text += QStringLiteral("Frame rate: %1 fps\n").arg(probe.frameRate, 0, 'f', 2);
+                text += QStringLiteral("Video codec: %1\n").arg(probe.videoCodec);
+            }
+            if (!probe.audioCodec.isEmpty()) {
+                text += QStringLiteral("Audio codec: %1\n").arg(probe.audioCodec);
+                text += QStringLiteral("Sample rate: %1 Hz\n").arg(probe.audioSampleRate);
+                text += QStringLiteral("Channels: %1\n").arg(probe.audioChannels);
+            }
+            if (probe.bitrateBps > 0) {
+                text += QStringLiteral("Bitrate: %1 kbps\n").arg(probe.bitrateBps / 1000);
+            }
+        } else {
+            text += QStringLiteral("\n(Could not probe media info: %1)").arg(probe.errorMessage);
+        }
+    }
+
+    QMessageBox::information(this, QStringLiteral("Media Info"), text);
 }
 
 void MainWindow::updateStatusBar() {

@@ -49,8 +49,27 @@ void JobManager::cancelJob(const QUuid &jobId) {
             if (auto *engine = engineForJob(job)) {
                 engine->cancelConversion(jobId);
             }
-        } else if (job->status() == JobStatus::Queued) {
+        } else if (job->status() == JobStatus::Queued || job->status() == JobStatus::Paused) {
             job->setStatus(JobStatus::Cancelled);
+        }
+    }
+}
+
+void JobManager::pauseJob(const QUuid &jobId) {
+    if (ConversionJob *job = findJob(jobId)) {
+        if (job->status() == JobStatus::Queued) {
+            job->setStatus(JobStatus::Paused);
+        }
+    }
+}
+
+void JobManager::resumeJob(const QUuid &jobId) {
+    if (ConversionJob *job = findJob(jobId)) {
+        if (job->status() == JobStatus::Paused) {
+            job->setStatus(JobStatus::Queued);
+            if (m_queueRunning) {
+                tryStartNextJobs();
+            }
         }
     }
 }
@@ -81,6 +100,23 @@ ConversionJob *JobManager::duplicateJob(const QUuid &jobId) {
     copy->setParameters(source->parameters());
     copy->setPriority(source->priority());
     return addJob(std::move(copy));
+}
+
+void JobManager::setJobOrder(const QList<QUuid> &orderedIds) {
+    QList<ConversionJob *> reordered;
+    reordered.reserve(m_jobs.size());
+    for (const QUuid &id : orderedIds) {
+        if (ConversionJob *job = findJob(id)) {
+            reordered.append(job);
+        }
+    }
+    for (ConversionJob *job : m_jobs) {
+        if (!reordered.contains(job)) {
+            reordered.append(job);
+        }
+    }
+    m_jobs = reordered;
+    emit queueChanged();
 }
 
 void JobManager::setMaxConcurrentJobs(int max) {
