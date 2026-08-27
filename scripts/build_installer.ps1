@@ -20,9 +20,11 @@ Write-Host "== Configuring Release build ==" -ForegroundColor Cyan
 cmake -S $repoRoot -B "$repoRoot\build-release" -G Ninja `
     -DCMAKE_TOOLCHAIN_FILE=$VcpkgToolchain -DVCPKG_TARGET_TRIPLET=x64-windows `
     -DCMAKE_BUILD_TYPE=Release
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "== Building MagnifyFactory (Release) ==" -ForegroundColor Cyan
 cmake --build "$repoRoot\build-release" --target MagnifyFactory --config Release
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if (-not (Test-Path $InnoSetupCompiler)) {
     throw "Inno Setup compiler not found at '$InnoSetupCompiler'. Install it with: winget install --id JRSoftware.InnoSetup -e"
@@ -30,5 +32,6 @@ if (-not (Test-Path $InnoSetupCompiler)) {
 
 Write-Host "== Compiling installer ==" -ForegroundColor Cyan
 & $InnoSetupCompiler "$repoRoot\installer\MagnifyFactory.iss"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "Done. Installer is in $repoRoot\dist\" -ForegroundColor Green

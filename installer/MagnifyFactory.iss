@@ -11,7 +11,7 @@
 ; scripts\build_installer.ps1, which does both steps).
 
 #define MyAppName "MagnifyFactory"
-#define MyAppVersion "0.2.0"
+#define MyAppVersion "0.3.0"
 #define MyAppPublisher "MagnifyFactory contributors"
 #define MyAppURL "https://github.com/victorhmrod/MagnifyFactory"
 #define MyAppExeName "MagnifyFactory.exe"
