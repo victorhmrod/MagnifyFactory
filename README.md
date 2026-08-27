@@ -60,6 +60,16 @@ can be added without touching existing code.
   an image losslessly into a single-page PDF.
 - **PDF tools**: compress (recompress embedded images/streams), merge several
   PDFs into one, split one into a file per page — all via `qpdf`.
+- **`magnify` CLI** — the same job system and engines as the GUI, scriptable
+  from a terminal (see [Command-line interface](#command-line-interface)).
+- **Watch folders** — point at a folder and a target format; anything
+  dropped in there gets converted automatically a couple seconds later
+  (settle delay, so a still-copying file isn't grabbed mid-write).
+- **Archive tools** — extract zip/7z/rar/tar/gz with a click, or select
+  multiple files of any type and compress them into a zip, via 7-Zip.
+- **Plugin API** — drop a `.dll` implementing `IMagnifyPlugin` into
+  `plugins/` next to the executable and it's loaded at startup; today a
+  plugin contributes presets. See [Plugins](#plugins).
 - **Output next to the source file** — no separate output folder to manage;
   converted files land beside the original.
 - **Dark, information-dense UI** — a category sidebar and a queue table, no
@@ -70,14 +80,15 @@ can be added without touching existing code.
 - [x] PDF ↔ image conversion
 - [x] PDF compress (via `qpdf`)
 - [x] PDF merge/split (via `qpdf`)
-- [ ] Documents and archive conversion
+- [x] Archive tools (extract zip/7z/rar/tar/gz, create zip/7z)
+- [ ] Document conversion (docx/xlsx/pptx ↔ PDF, etc.)
 - [x] Hardware-accelerated encoding (NVENC / AMF / Quick Sync)
 - [x] Presets (YouTube, Discord, WhatsApp, MP3/FLAC, WebP/AVIF, PDF compress)
 - [x] Batch processing (multi-file drop/select, "Add Folder..." with an
       optional recursive scan; one format popup per file-type group)
-- [ ] Watch folders (auto-convert on file arrival)
-- [ ] `magnify` CLI sharing the same core as the GUI
-- [ ] Plugin API for third-party format/tool modules
+- [x] Watch folders (auto-convert on file arrival)
+- [x] `magnify` CLI sharing the same core as the GUI
+- [x] Plugin API (dynamically loaded, contributes presets today)
 
 ## Installing
 
@@ -92,6 +103,7 @@ make sure these are on your `PATH`:
 - `ffmpeg` / `ffprobe` (e.g. `winget install Gyan.FFmpeg`) for video/audio/image conversion
 - `pdftoppm` from Poppler (e.g. `winget install oschwartz10612.Poppler`) for PDF → image
 - `qpdf` (e.g. `winget install QPDF.QPDF`) for PDF compression
+- `7z` (e.g. `winget install 7zip.7zip`) for archive extract/create
 
 ## Building from source
 
@@ -107,6 +119,7 @@ make sure these are on your `PATH`:
 - [Poppler](https://github.com/oschwartz10612/poppler-windows) (`pdftoppm`
   on your `PATH`) for PDF → image rendering
 - [QPDF](https://qpdf.readthedocs.io/) (`qpdf` on your `PATH`) for PDF compression
+- [7-Zip](https://www.7-zip.org/) (`7z` on your `PATH`) for archive tools
 
 ### Get Qt6
 
@@ -163,6 +176,39 @@ rights needed — only touches `HKEY_CURRENT_USER`):
 ./scripts/unregister_context_menu.ps1
 ```
 
+## Command-line interface
+
+`magnify` (`build/magnify.exe`) drives the exact same `JobManager` and
+engines the GUI does — no separate conversion logic.
+
+```powershell
+magnify convert video.mp4 --to mp3
+magnify convert input.mkv --to mp4 --codec h265 --hardware nvidia
+magnify convert *.png --to webp --quality 85
+magnify convert clip.mp4 --to mp4 --preset "Discord"
+magnify convert --list-presets
+
+magnify pdf document.pdf --to png --dpi 300
+magnify pdf a.pdf b.pdf c.pdf --merge -o combined.pdf
+magnify pdf document.pdf --split
+```
+
+Run `magnify <command> --help` for the full option list.
+
+## Plugins
+
+A plugin is a Qt plugin DLL implementing
+[`IMagnifyPlugin`](src/plugins/IMagnifyPlugin.h) (`name()`, `version()`,
+`initialize()`, `shutdown()`, and today `presets()`). Drop the `.dll` into a
+`plugins/` folder next to `MagnifyFactory.exe` and it's loaded automatically
+at startup — no rebuild of the app needed.
+
+[`src/plugins/sample/`](src/plugins/sample/) is a complete, working example:
+a separately-built DLL that contributes a "WhatsApp Status" preset the core
+app never hardcoded. Build it with the rest of the project
+(`magnify_plugin_sample` target) — it lands in `build/plugins/` and the app
+picks it up on the next launch.
+
 ## Architecture
 
 ```
@@ -191,6 +237,9 @@ Key pieces:
 | [`PdfEngine`](src/engines/pdf/PdfEngine.h) | PDF ↔ image via Poppler's `pdftoppm`, plus a minimal in-process PDF writer for image → PDF. |
 | [`HardwareAccelerationManager`](src/hardware/HardwareAccelerationManager.h) | Verifies GPU encoders with a real test encode rather than trusting what FFmpeg was compiled with. |
 | [`PresetRegistry`](src/presets/PresetRegistry.h) | Built-in + user-supplied presets — a name mapped to a target format and a bundle of engine parameters. |
+| [`WatchFolderManager`](src/watch/WatchFolderManager.h) | Monitors folders via `QFileSystemWatcher`, debounces new files with a settle delay, reports them for conversion. |
+| [`ArchiveEngine`](src/engines/archive/ArchiveEngine.h) | Extract/create zip/7z/rar/tar/gz via the 7-Zip CLI. |
+| [`PluginManager`](src/plugins/PluginManager.h) | Loads `IMagnifyPlugin` DLLs from `plugins/` via `QPluginLoader`, merges what they contribute into the core registries. |
 
 ## Contributing
 

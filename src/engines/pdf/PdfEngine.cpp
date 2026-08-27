@@ -77,10 +77,11 @@ void PdfEngine::convertPdfToImage(ConversionJob *job) {
     const QFileInfo outputInfo(job->outputPath());
     const QString outputPrefix = QDir(outputInfo.absolutePath()).filePath(outputInfo.completeBaseName());
 
+    const int dpi = job->parameters().value(QStringLiteral("dpi"), 150).toInt();
     const QStringList args{
         isJpeg ? QStringLiteral("-jpeg") : QStringLiteral("-png"),
         QStringLiteral("-singlefile"),
-        QStringLiteral("-r"), QStringLiteral("150"),
+        QStringLiteral("-r"), QString::number(dpi),
         QStringLiteral("-f"), QStringLiteral("1"),
         QStringLiteral("-l"), QStringLiteral("1"),
         job->inputPath(),

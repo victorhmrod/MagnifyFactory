@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QDir>
 #include <QDirIterator>
 #include <QDragEnterEvent>
@@ -23,12 +24,16 @@
 #include <QtConcurrentRun>
 
 #include "ConvertDialog.h"
+#include "WatchFoldersDialog.h"
 #include "core/ConversionJob.h"
 #include "core/FormatRegistry.h"
 #include "core/JobManager.h"
+#include "engines/archive/ArchiveEngine.h"
 #include "engines/ffmpeg/FFmpegMediaEngine.h"
 #include "engines/pdf/PdfEngine.h"
 #include "hardware/HardwareAccelerationManager.h"
+#include "plugins/PluginManager.h"
+#include "watch/WatchFolderManager.h"
 
 using magnify::core::ConversionJob;
 using magnify::core::FormatCategory;
@@ -38,6 +43,8 @@ using magnify::core::JobStatus;
 using magnify::hardware::HardwareAccelerationManager;
 using magnify::hardware::HardwareVendor;
 using magnify::hardware::hardwareVendorToString;
+using magnify::watch::WatchFolderManager;
+using magnify::watch::WatchRule;
 
 namespace magnify::ui {
 
@@ -65,9 +72,16 @@ QString statusColor(JobStatus status) {
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_ffmpegEngine = std::make_unique<magnify::engines::ffmpeg::FFmpegMediaEngine>();
     m_pdfEngine = std::make_unique<magnify::engines::pdf::PdfEngine>();
+    m_archiveEngine = std::make_unique<magnify::engines::archive::ArchiveEngine>();
     m_jobManager = std::make_unique<JobManager>();
     m_jobManager->registerEngine(m_ffmpegEngine.get());
     m_jobManager->registerEngine(m_pdfEngine.get());
+    m_jobManager->registerEngine(m_archiveEngine.get());
+    m_watchFolderManager = std::make_unique<WatchFolderManager>();
+    connect(m_watchFolderManager.get(), &WatchFolderManager::fileDetected, this, &MainWindow::onWatchedFileDetected);
+
+    m_pluginManager = std::make_unique<magnify::plugins::PluginManager>();
+    m_pluginManager->loadPluginsFrom(QCoreApplication::applicationDirPath() + QStringLiteral("/plugins"));
 
     setAcceptDrops(true);
     setWindowTitle(QStringLiteral("MagnifyFactory"));
@@ -121,6 +135,7 @@ void MainWindow::buildUi() {
     addCategoryItem(QStringLiteral("🎵  Audio"), FormatCategory::Audio);
     addCategoryItem(QStringLiteral("🖼  Images"), FormatCategory::Image);
     addCategoryItem(QStringLiteral("📄  PDF"), FormatCategory::Pdf);
+    addCategoryItem(QStringLiteral("🗜  Archive"), FormatCategory::Archive);
     m_sidebar->setCurrentRow(0);
     connect(m_sidebar, &QListWidget::currentItemChanged, this,
             [this](QListWidgetItem *current, QListWidgetItem *) { onCategorySelected(current); });
@@ -203,6 +218,10 @@ void MainWindow::buildUi() {
     m_hardwareDetectionWatcher.setFuture(
         QtConcurrent::run([]() { HardwareAccelerationManager::instance().ensureDetected(); }));
 
+    auto *watchFoldersButton = new QPushButton(QStringLiteral("Watch Folders..."), content);
+    connect(watchFoldersButton, &QPushButton::clicked, this, &MainWindow::openWatchFoldersDialog);
+    controlsRow->addWidget(watchFoldersButton);
+
     controlsRow->addStretch(1);
     contentLayout->addLayout(controlsRow);
 
@@ -213,10 +232,30 @@ void MainWindow::buildUi() {
     statusBar()->addWidget(m_statusJobsLabel);
 
     onCategorySelected(m_sidebar->currentItem());
+
+    if (!m_pluginManager->loadedPlugins().isEmpty()) {
+        QStringList names;
+        for (const auto &loaded : m_pluginManager->loadedPlugins()) {
+            names << loaded.plugin->name();
+        }
+        statusBar()->showMessage(QStringLiteral("Plugins loaded: %1").arg(names.join(QStringLiteral(", "))), 6000);
+    }
 }
 
 void MainWindow::onHardwareDetectionFinished() {
     populateHardwareCombo();
+}
+
+void MainWindow::openWatchFoldersDialog() {
+    WatchFoldersDialog dialog(m_watchFolderManager.get(), this);
+    dialog.exec();
+}
+
+void MainWindow::onWatchedFileDetected(const QString &filePath, const WatchRule &rule) {
+    statusBar()->showMessage(
+        QStringLiteral("Watch folder: converting %1").arg(QFileInfo(filePath).fileName()), 4000);
+    enqueueFile(filePath, rule.targetExt, rule.parameters);
+    m_jobManager->startQueue();
 }
 
 void MainWindow::populateHardwareCombo() {
@@ -319,15 +358,37 @@ void MainWindow::addInputFiles(const QStringList &paths) {
             }
         }
 
-        if (category == FormatCategory::Pdf && files.size() > 1) {
+        if (category == FormatCategory::Archive) {
+            // Archives are always "extract here" — there's no meaningful
+            // convert-to-another-format flow for them.
             const auto reply = QMessageBox::question(
                 this, QStringLiteral("MagnifyFactory"),
-                QStringLiteral("Merge these %1 PDFs into a single file, or handle them individually "
-                                "(convert/compress each on its own)?")
-                    .arg(files.size()),
-                QStringLiteral("Merge into one PDF"), QStringLiteral("Handle individually"));
-            if (reply == 0) {
+                QStringLiteral("Extract %1 archive(s) here?").arg(files.size()));
+            if (reply == QMessageBox::Yes) {
+                for (const QString &file : files) {
+                    extractArchive(file);
+                }
+            }
+            continue;
+        }
+
+        if (files.size() > 1) {
+            const bool offerMerge = category == FormatCategory::Pdf;
+            QMessageBox box(this);
+            box.setWindowTitle(QStringLiteral("MagnifyFactory"));
+            box.setText(QStringLiteral("You selected %1 files. What would you like to do?").arg(files.size()));
+            QPushButton *mergeButton =
+                offerMerge ? box.addButton(QStringLiteral("Merge into one PDF"), QMessageBox::ActionRole) : nullptr;
+            QPushButton *zipButton = box.addButton(QStringLiteral("Compress into ZIP"), QMessageBox::ActionRole);
+            box.addButton(QStringLiteral("Handle Individually"), QMessageBox::RejectRole);
+            box.exec();
+
+            if (mergeButton && box.clickedButton() == mergeButton) {
                 mergePdfs(files);
+                continue;
+            }
+            if (box.clickedButton() == zipButton) {
+                compressToZip(files);
                 continue;
             }
         }
@@ -360,6 +421,40 @@ void MainWindow::mergePdfs(const QStringList &pdfPaths) {
 
     m_jobManager->addJob(std::move(job));
     statusBar()->showMessage(QStringLiteral("Queued: merge %1 PDFs").arg(pdfPaths.size()), 4000);
+}
+
+void MainWindow::compressToZip(const QStringList &files) {
+    const QFileInfo firstInfo(files.first());
+    const QDir outDir = firstInfo.absoluteDir();
+    QString outputPath = outDir.filePath(QStringLiteral("Archive (%1 files).zip").arg(files.size()));
+    int suffix = 2;
+    while (QFileInfo::exists(outputPath)) {
+        outputPath = outDir.filePath(QStringLiteral("Archive (%1 files) %2.zip").arg(files.size()).arg(suffix++));
+    }
+
+    auto job = std::make_unique<ConversionJob>(files.first(), outputPath);
+    job->setExtraInputPaths(files.mid(1));
+    job->setSourceFormat(firstInfo.suffix().toLower());
+    job->setTargetFormat(QStringLiteral("zip"));
+    job->setEngineName(QStringLiteral("Archive Tools"));
+    job->setParameters({{QStringLiteral("operation"), QStringLiteral("create")}});
+
+    m_jobManager->addJob(std::move(job));
+    statusBar()->showMessage(QStringLiteral("Queued: compress %1 files into ZIP").arg(files.size()), 4000);
+}
+
+void MainWindow::extractArchive(const QString &archivePath) {
+    const QFileInfo info(archivePath);
+    const QString outputDir = info.absoluteDir().filePath(info.completeBaseName());
+
+    auto job = std::make_unique<ConversionJob>(archivePath, outputDir);
+    job->setSourceFormat(info.suffix().toLower());
+    job->setTargetFormat(QStringLiteral("folder"));
+    job->setEngineName(QStringLiteral("Archive Tools"));
+    job->setParameters({{QStringLiteral("operation"), QStringLiteral("extract")}});
+
+    m_jobManager->addJob(std::move(job));
+    statusBar()->showMessage(QStringLiteral("Queued: extract %1").arg(info.fileName()), 4000);
 }
 
 void MainWindow::addInputFolder() {

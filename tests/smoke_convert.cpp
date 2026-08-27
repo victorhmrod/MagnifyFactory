@@ -23,6 +23,7 @@ bool runOneConversion(JobManager &manager, const QString &input, const QString &
     auto job = std::make_unique<ConversionJob>(input, output);
     job->setSourceFormat(QFileInfo(input).suffix().toLower());
     job->setTargetFormat(targetFormat);
+    job->setEngineName(QStringLiteral("FFmpeg"));
     ConversionJob *raw = manager.addJob(std::move(job));
 
     QEventLoop loop;

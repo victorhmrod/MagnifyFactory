@@ -42,6 +42,19 @@ set(MAGNIFY_ENGINE_SOURCES
     src/engines/pdf/PdfImageWriter.cpp
     src/engines/pdf/PdfEngine.h
     src/engines/pdf/PdfEngine.cpp
+    src/engines/archive/ArchiveEngine.h
+    src/engines/archive/ArchiveEngine.cpp
+)
+
+set(MAGNIFY_WATCH_SOURCES
+    src/watch/WatchFolderManager.h
+    src/watch/WatchFolderManager.cpp
+)
+
+set(MAGNIFY_PLUGINS_SOURCES
+    src/plugins/IMagnifyPlugin.h
+    src/plugins/PluginManager.h
+    src/plugins/PluginManager.cpp
 )
 
 set(MAGNIFY_UI_SOURCES
@@ -49,6 +62,8 @@ set(MAGNIFY_UI_SOURCES
     src/ui/MainWindow.cpp
     src/ui/ConvertDialog.h
     src/ui/ConvertDialog.cpp
+    src/ui/WatchFoldersDialog.h
+    src/ui/WatchFoldersDialog.cpp
 )
 
 add_library(magnify_core STATIC ${MAGNIFY_CORE_SOURCES})
@@ -67,6 +82,14 @@ add_library(magnify_engines STATIC ${MAGNIFY_ENGINE_SOURCES})
 target_include_directories(magnify_engines PUBLIC src)
 target_link_libraries(magnify_engines PUBLIC Qt6::Widgets magnify_core magnify_hardware)
 
+add_library(magnify_watch STATIC ${MAGNIFY_WATCH_SOURCES})
+target_include_directories(magnify_watch PUBLIC src)
+target_link_libraries(magnify_watch PUBLIC Qt6::Widgets)
+
+add_library(magnify_plugins STATIC ${MAGNIFY_PLUGINS_SOURCES})
+target_include_directories(magnify_plugins PUBLIC src)
+target_link_libraries(magnify_plugins PUBLIC Qt6::Widgets magnify_core magnify_presets)
+
 set(MAGNIFY_RESOURCES resources/icon.qrc)
 if(WIN32)
     list(APPEND MAGNIFY_RESOURCES resources/app.rc)
@@ -78,7 +101,7 @@ add_executable(MagnifyFactory WIN32
     ${MAGNIFY_RESOURCES}
 )
 target_include_directories(MagnifyFactory PRIVATE src)
-target_link_libraries(MagnifyFactory PRIVATE Qt6::Widgets Qt6::Concurrent magnify_core magnify_hardware magnify_presets magnify_engines)
+target_link_libraries(MagnifyFactory PRIVATE Qt6::Widgets Qt6::Concurrent magnify_core magnify_hardware magnify_presets magnify_engines magnify_watch magnify_plugins)
 
 # Qt cannot start without its "platforms" plugin (qwindows[d].dll). windeployqt
 # isn't available from this vcpkg install, so copy the plugin directly next
@@ -116,6 +139,25 @@ if(TARGET Qt6::QJpegPlugin)
         )
     endif()
 endif()
+
+add_executable(magnify src/cli/main.cpp)
+target_include_directories(magnify PRIVATE src)
+target_link_libraries(magnify PRIVATE Qt6::Core magnify_core magnify_hardware magnify_presets magnify_engines)
+
+# Real, separately-built sample plugin (not linked into the app) that proves
+# the plugin API works end to end: PluginManager loads this DLL at runtime
+# and merges the preset it contributes into PresetRegistry. Built straight
+# into <build>/plugins/ so PluginManager's default scan path finds it.
+add_library(magnify_plugin_sample SHARED
+    src/plugins/sample/SampleWhatsAppPlugin.h
+    src/plugins/sample/SampleWhatsAppPlugin.cpp
+)
+target_include_directories(magnify_plugin_sample PRIVATE src)
+target_link_libraries(magnify_plugin_sample PRIVATE Qt6::Widgets magnify_core magnify_presets)
+set_target_properties(magnify_plugin_sample PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins"
+)
 
 enable_testing()
 add_subdirectory(tests)

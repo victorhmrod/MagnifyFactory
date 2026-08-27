@@ -46,6 +46,15 @@ void FormatRegistry::registerBuiltins() {
 
     // --- PDF -----------------------------------------------------------------
     registerFormat({"PDF", "pdf", FormatCategory::Pdf, {"application/pdf"}, true, true});
+
+    // --- Archives --------------------------------------------------------------
+    // zip/7z can be created by 7-Zip; rar/tar/gz are extraction-only (creating a
+    // proprietary .rar isn't something 7-Zip's free CLI can do).
+    registerFormat({"ZIP", "zip", FormatCategory::Archive, {"application/zip"}, true, true});
+    registerFormat({"7-Zip", "7z", FormatCategory::Archive, {"application/x-7z-compressed"}, true, true});
+    registerFormat({"RAR", "rar", FormatCategory::Archive, {"application/vnd.rar"}, true, false});
+    registerFormat({"TAR", "tar", FormatCategory::Archive, {"application/x-tar"}, true, false});
+    registerFormat({"GZip", "gz", FormatCategory::Archive, {"application/gzip"}, true, false});
 }
 
 const FormatDescriptor *FormatRegistry::findByExtension(const QString &extension) const {

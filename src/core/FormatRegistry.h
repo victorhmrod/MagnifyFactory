@@ -11,6 +11,7 @@ enum class FormatCategory {
     Audio,
     Image,
     Pdf,
+    Archive,
     Unknown
 };
 

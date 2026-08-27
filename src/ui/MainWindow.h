@@ -21,7 +21,10 @@ QT_END_NAMESPACE
 
 namespace magnify::engines::ffmpeg { class FFmpegMediaEngine; }
 namespace magnify::engines::pdf { class PdfEngine; }
+namespace magnify::engines::archive { class ArchiveEngine; }
 namespace magnify::core { class JobManager; class ConversionJob; }
+namespace magnify::watch { class WatchFolderManager; struct WatchRule; }
+namespace magnify::plugins { class PluginManager; }
 
 namespace magnify::ui {
 
@@ -54,16 +57,23 @@ private:
     void addInputFolder();
     void enqueueFile(const QString &inputPath, const QString &targetExt, const QVariantMap &presetParameters = {});
     void mergePdfs(const QStringList &pdfPaths);
+    void compressToZip(const QStringList &files);
+    void extractArchive(const QString &archivePath);
     void refreshRow(magnify::core::ConversionJob *job);
     void appendRow(magnify::core::ConversionJob *job);
     void onCategorySelected(QListWidgetItem *current);
     void updateStatusBar();
     void populateHardwareCombo();
     void onHardwareDetectionFinished();
+    void openWatchFoldersDialog();
+    void onWatchedFileDetected(const QString &filePath, const magnify::watch::WatchRule &rule);
 
     std::unique_ptr<magnify::engines::ffmpeg::FFmpegMediaEngine> m_ffmpegEngine;
     std::unique_ptr<magnify::engines::pdf::PdfEngine> m_pdfEngine;
+    std::unique_ptr<magnify::engines::archive::ArchiveEngine> m_archiveEngine;
     std::unique_ptr<magnify::core::JobManager> m_jobManager;
+    std::unique_ptr<magnify::watch::WatchFolderManager> m_watchFolderManager;
+    std::unique_ptr<magnify::plugins::PluginManager> m_pluginManager;
 
     QListWidget *m_sidebar = nullptr;
     QTableWidget *m_queueTable = nullptr;

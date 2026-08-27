@@ -26,3 +26,12 @@ target_link_libraries(smoke_presets PRIVATE Qt6::Core magnify_core magnify_hardw
 
 add_executable(smoke_folder_scan smoke_folder_scan.cpp)
 target_link_libraries(smoke_folder_scan PRIVATE Qt6::Core)
+
+add_executable(smoke_watch smoke_watch.cpp)
+target_link_libraries(smoke_watch PRIVATE Qt6::Core magnify_core magnify_hardware magnify_engines magnify_watch)
+
+add_executable(smoke_archive smoke_archive.cpp)
+target_link_libraries(smoke_archive PRIVATE Qt6::Core magnify_core magnify_hardware magnify_engines)
+
+add_executable(smoke_plugins smoke_plugins.cpp)
+target_link_libraries(smoke_plugins PRIVATE Qt6::Core magnify_core magnify_hardware magnify_presets magnify_plugins magnify_engines)

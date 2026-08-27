@@ -128,9 +128,14 @@ QStringList FFmpegMediaEngine::buildArgsForJob(ConversionJob *job, const MediaPr
         if (targetExt == QStringLiteral("mp4") || targetExt == QStringLiteral("mkv") ||
             targetExt == QStringLiteral("mov")) {
             // Remux without re-encoding whenever the codecs are already compatible
-            // with the destination container (e.g. MKV H.264/AAC -> MP4).
+            // with the destination container (e.g. MKV H.264/AAC -> MP4). A
+            // stream copy can't apply a resolution change, so any request for
+            // one (a preset like Discord/WhatsApp, or explicit --width/--height)
+            // forces the re-encode path even when the codecs already match.
+            const bool wantsResize =
+                params.contains(QStringLiteral("width")) || params.contains(QStringLiteral("height"));
             const bool canStreamCopy = !params.value(QStringLiteral("forceReencode"), false).toBool() &&
-                                        sourceExt != targetExt && sourceIsH264 && sourceIsAac;
+                                        !wantsResize && sourceExt != targetExt && sourceIsH264 && sourceIsAac;
             if (canStreamCopy) {
                 builder.copyVideoStream().copyAudioStream();
             } else {
@@ -191,6 +196,23 @@ void FFmpegMediaEngine::startConversion(ConversionJob *job) {
             [this, jobId](int exitCode, QProcess::ExitStatus exitStatus) {
                 handleProcessFinished(jobId, exitCode, exitStatus);
             });
+    // Without this, a process that fails to even start (ffmpeg missing from
+    // PATH, permissions, ...) never emits finished(), and the job — and any
+    // caller blocked on its statusChanged signal — hangs forever instead of
+    // failing.
+    connect(process, &QProcess::errorOccurred, this, [this, jobId](QProcess::ProcessError error) {
+        auto it = m_runningJobs.find(jobId);
+        if (error != QProcess::FailedToStart || it == m_runningJobs.end()) {
+            return;
+        }
+        RunningJob running = it.value();
+        m_runningJobs.erase(it);
+        const QString errorText = QStringLiteral("Could not start ffmpeg: %1").arg(running.process->errorString());
+        running.job->setErrorMessage(errorText);
+        running.job->setStatus(JobStatus::Failed);
+        emit jobFinished(jobId, false, errorText);
+        running.process->deleteLater();
+    });
 
     job->setStatus(JobStatus::Running);
     process->start(QStringLiteral("ffmpeg"), args);
