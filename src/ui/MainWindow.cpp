@@ -13,9 +13,11 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QListWidget>
+#include <QCloseEvent>
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPushButton>
+#include <QSettings>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QTableWidget>
@@ -96,6 +98,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(m_jobManager.get(), &JobManager::jobAdded, this, &MainWindow::appendRow);
     connect(m_jobManager.get(), &JobManager::queueChanged, this, &MainWindow::updateStatusBar);
 
+    loadSettings();
     updateStatusBar();
 }
 
@@ -263,7 +266,8 @@ void MainWindow::onWatchedFileDetected(const QString &filePath, const WatchRule 
 }
 
 void MainWindow::populateHardwareCombo() {
-    const QString previousSelection = m_hardwareCombo->currentData().toString();
+    const QString previousSelection =
+        !m_pendingHardwareBackend.isEmpty() ? m_pendingHardwareBackend : m_hardwareCombo->currentData().toString();
     const QList<HardwareVendor> detected = HardwareAccelerationManager::instance().availableVendors();
 
     if (detected.contains(HardwareVendor::Nvidia)) {
@@ -281,6 +285,7 @@ void MainWindow::populateHardwareCombo() {
     if (restoredIndex >= 0) {
         m_hardwareCombo->setCurrentIndex(restoredIndex);
     }
+    m_pendingHardwareBackend.clear();
 
     if (detected.size() > 1) {
         QStringList gpuNames;
@@ -572,6 +577,63 @@ void MainWindow::refreshRow(ConversionJob *job) {
             return;
         }
     }
+}
+
+void MainWindow::loadSettings() {
+    QSettings settings;
+
+    restoreGeometry(settings.value(QStringLiteral("window/geometry")).toByteArray());
+
+    m_concurrencySpin->setValue(settings.value(QStringLiteral("queue/concurrency"), 2).toInt());
+
+    m_pendingHardwareBackend = settings.value(QStringLiteral("queue/hardwareBackend")).toString();
+    if (!m_pendingHardwareBackend.isEmpty()) {
+        const int index = m_hardwareCombo->findData(m_pendingHardwareBackend);
+        if (index >= 0) {
+            m_hardwareCombo->setCurrentIndex(index);
+            m_pendingHardwareBackend.clear();
+        }
+        // If the vendor isn't in the combo yet (GPU detection still running),
+        // populateHardwareCombo() picks up m_pendingHardwareBackend once it finishes.
+    }
+
+    const int ruleCount = settings.beginReadArray(QStringLiteral("watchFolders/rules"));
+    for (int i = 0; i < ruleCount; ++i) {
+        settings.setArrayIndex(i);
+        watch::WatchRule rule;
+        rule.folderPath = settings.value(QStringLiteral("folderPath")).toString();
+        rule.targetExt = settings.value(QStringLiteral("targetExt")).toString();
+        rule.parameters = settings.value(QStringLiteral("parameters")).toMap();
+        rule.enabled = settings.value(QStringLiteral("enabled"), true).toBool();
+        if (!rule.folderPath.isEmpty() && QDir(rule.folderPath).exists()) {
+            m_watchFolderManager->addRule(rule);
+        }
+    }
+    settings.endArray();
+}
+
+void MainWindow::saveSettings() {
+    QSettings settings;
+
+    settings.setValue(QStringLiteral("window/geometry"), saveGeometry());
+    settings.setValue(QStringLiteral("queue/concurrency"), m_concurrencySpin->value());
+    settings.setValue(QStringLiteral("queue/hardwareBackend"), m_hardwareCombo->currentData().toString());
+
+    const QVector<WatchRule> &rules = m_watchFolderManager->rules();
+    settings.beginWriteArray(QStringLiteral("watchFolders/rules"));
+    for (int i = 0; i < rules.size(); ++i) {
+        settings.setArrayIndex(i);
+        settings.setValue(QStringLiteral("folderPath"), rules.at(i).folderPath);
+        settings.setValue(QStringLiteral("targetExt"), rules.at(i).targetExt);
+        settings.setValue(QStringLiteral("parameters"), rules.at(i).parameters);
+        settings.setValue(QStringLiteral("enabled"), rules.at(i).enabled);
+    }
+    settings.endArray();
+}
+
+void MainWindow::closeEvent(QCloseEvent *event) {
+    saveSettings();
+    QMainWindow::closeEvent(event);
 }
 
 void MainWindow::updateStatusBar() {

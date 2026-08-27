@@ -17,6 +17,7 @@ class QSpinBox;
 class QListWidget;
 class QListWidgetItem;
 class QStackedWidget;
+class QCloseEvent;
 QT_END_NAMESPACE
 
 namespace magnify::engines::ffmpeg { class FFmpegMediaEngine; }
@@ -46,6 +47,7 @@ public:
 protected:
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
 
 private:
     void buildUi();
@@ -68,6 +70,8 @@ private:
     void onHardwareDetectionFinished();
     void openWatchFoldersDialog();
     void onWatchedFileDetected(const QString &filePath, const magnify::watch::WatchRule &rule);
+    void loadSettings();
+    void saveSettings();
 
     std::unique_ptr<magnify::engines::ffmpeg::FFmpegMediaEngine> m_ffmpegEngine;
     std::unique_ptr<magnify::engines::pdf::PdfEngine> m_pdfEngine;
@@ -87,6 +91,7 @@ private:
     QFutureWatcher<void> m_hardwareDetectionWatcher;
 
     magnify::core::FormatCategory m_activeCategory = magnify::core::FormatCategory::Video;
+    QString m_pendingHardwareBackend; // restored from settings, applied once the combo is fully populated
 };
 
 } // namespace magnify::ui

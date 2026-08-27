@@ -75,6 +75,8 @@ can be added without touching existing code.
   plugin contributes presets. See [Plugins](#plugins).
 - **Output next to the source file** — no separate output folder to manage;
   converted files land beside the original.
+- **Remembers your setup** — window size/position, concurrency, hardware
+  backend, and watch folder rules persist across restarts.
 - **Dark, information-dense UI** — a category sidebar and a queue table, no
   unnecessary chrome.
 
