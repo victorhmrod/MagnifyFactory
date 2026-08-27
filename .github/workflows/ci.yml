@@ -51,15 +51,15 @@ jobs:
           -DVCPKG_TARGET_TRIPLET=x64-windows
           -DCMAKE_BUILD_TYPE=Debug
 
-      # Only the GUI, CLI, and the two dependency-free unit tests — the
-      # smoke_* targets shell out to real ffmpeg/qpdf/7z/soffice binaries
-      # that aren't installed on the CI image, so they're excluded here and
-      # remain a manual verification step (see README).
+      # Builds every target, including the smoke_* ones — those shell out to
+      # real ffmpeg/qpdf/7z/soffice binaries at runtime so ctest never runs
+      # them here (see README), but they still need to compile. An explicit
+      # target list here would silently stop building new ctest targets
+      # (e.g. test_job_manager) the moment someone adds one and forgets to
+      # update this file — building everything can't go stale like that.
       - name: Build
         shell: pwsh
-        run: >
-          cmake --build build
-          --target MagnifyFactory magnify test_ffmpeg_command_builder test_format_registry
+        run: cmake --build build
 
       - name: Run unit tests
         shell: pwsh
