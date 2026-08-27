@@ -2,10 +2,12 @@
 
 #include <QFileInfo>
 #include <QGridLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include "TrimDialog.h"
 #include "presets/PresetRegistry.h"
 
 using magnify::core::FormatCategory;
@@ -15,7 +17,8 @@ using magnify::presets::PresetRegistry;
 
 namespace magnify::ui {
 
-ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCategory, QWidget *parent)
+ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCategory, QWidget *parent,
+                              bool isSingleFile)
     : QDialog(parent) {
     setWindowTitle(QStringLiteral("Convert"));
     setModal(true);
@@ -44,11 +47,17 @@ ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCateg
     // targets (e.g. a video can be converted straight to an audio format).
     switch (sourceCategory) {
         case FormatCategory::Video:
+            if (isSingleFile) {
+                addTrimTool(layout, fileName);
+            }
             addPresetSection(layout, FormatCategory::Video);
             addFormatSection(layout, QStringLiteral("VIDEO"), FormatCategory::Video);
             addFormatSection(layout, QStringLiteral("EXTRACT AUDIO"), FormatCategory::Audio);
             break;
         case FormatCategory::Audio:
+            if (isSingleFile) {
+                addTrimTool(layout, fileName);
+            }
             addPresetSection(layout, FormatCategory::Audio);
             addFormatSection(layout, QStringLiteral("AUDIO"), FormatCategory::Audio);
             break;
@@ -158,6 +167,31 @@ void ConvertDialog::addCustomSection(QVBoxLayout *layout, const QString &title,
         }
     }
     layout->addLayout(grid);
+}
+
+void ConvertDialog::addTrimTool(QVBoxLayout *layout, const QString &filePath) {
+    auto *sectionLabel = new QLabel(QStringLiteral("TOOLS"), this);
+    sectionLabel->setObjectName(QStringLiteral("section"));
+    layout->addWidget(sectionLabel);
+
+    auto *button = new QPushButton(QStringLiteral("Trim..."), this);
+    button->setProperty("class", QStringLiteral("formatButton"));
+    button->setCursor(Qt::PointingHandCursor);
+    connect(button, &QPushButton::clicked, this, [this, filePath]() {
+        TrimDialog trimDialog(filePath, this);
+        if (trimDialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        m_selectedFormat = QFileInfo(filePath).suffix().toLower();
+        m_selectedParameters = {{QStringLiteral("trimStart"), trimDialog.startSeconds()},
+                                 {QStringLiteral("trimEnd"), trimDialog.endSeconds()}};
+        accept();
+    });
+
+    auto *row = new QHBoxLayout();
+    row->addWidget(button);
+    row->addStretch(1);
+    layout->addLayout(row);
 }
 
 } // namespace magnify::ui

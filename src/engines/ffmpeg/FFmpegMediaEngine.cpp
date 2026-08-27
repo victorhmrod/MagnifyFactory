@@ -57,6 +57,17 @@ QStringList FFmpegMediaEngine::buildArgsForJob(ConversionJob *job, const MediaPr
     const FormatCategory targetCategory = FormatRegistry::instance().categoryOf(targetExt);
     const auto &params = job->parameters();
 
+    const bool wantsTrim =
+        params.contains(QStringLiteral("trimStart")) || params.contains(QStringLiteral("trimEnd"));
+    if (wantsTrim) {
+        const double start = params.value(QStringLiteral("trimStart"), 0.0).toDouble();
+        if (params.contains(QStringLiteral("trimEnd"))) {
+            builder.setTrim(start, params.value(QStringLiteral("trimEnd")).toDouble());
+        } else {
+            builder.setTrim(start);
+        }
+    }
+
     if (targetCategory == FormatCategory::Audio) {
         // Any container/codec -> pure audio output: drop video entirely.
         builder.dropVideoStream();
@@ -134,8 +145,12 @@ QStringList FFmpegMediaEngine::buildArgsForJob(ConversionJob *job, const MediaPr
             // forces the re-encode path even when the codecs already match.
             const bool wantsResize =
                 params.contains(QStringLiteral("width")) || params.contains(QStringLiteral("height"));
+            // Trimming with a stream copy would snap to the nearest keyframe
+            // instead of the exact requested time, so it always forces a
+            // re-encode.
             const bool canStreamCopy = !params.value(QStringLiteral("forceReencode"), false).toBool() &&
-                                        !wantsResize && sourceExt != targetExt && sourceIsH264 && sourceIsAac;
+                                        !wantsResize && !wantsTrim && sourceExt != targetExt && sourceIsH264 &&
+                                        sourceIsAac;
             if (canStreamCopy) {
                 builder.copyVideoStream().copyAudioStream();
             } else {

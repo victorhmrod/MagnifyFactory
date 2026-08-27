@@ -38,3 +38,6 @@ target_link_libraries(smoke_plugins PRIVATE Qt6::Core magnify_core magnify_hardw
 
 add_executable(smoke_document smoke_document.cpp)
 target_link_libraries(smoke_document PRIVATE Qt6::Core magnify_core magnify_hardware magnify_engines)
+
+add_executable(smoke_trim smoke_trim.cpp)
+target_link_libraries(smoke_trim PRIVATE Qt6::Core magnify_core magnify_hardware magnify_engines)

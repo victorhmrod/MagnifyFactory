@@ -402,8 +402,9 @@ void MainWindow::addInputFiles(const QStringList &paths) {
             }
         }
 
-        const QString label = files.size() == 1 ? files.first() : QStringLiteral("%1 files").arg(files.size());
-        ConvertDialog dialog(label, category, this);
+        const bool isSingleFile = files.size() == 1;
+        const QString label = isSingleFile ? files.first() : QStringLiteral("%1 files").arg(files.size());
+        ConvertDialog dialog(label, category, this, isSingleFile);
         if (dialog.exec() == QDialog::Accepted && !dialog.selectedFormat().isEmpty()) {
             for (const QString &file : files) {
                 enqueueFile(file, dialog.selectedFormat(), dialog.selectedParameters());

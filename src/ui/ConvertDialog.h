@@ -22,7 +22,10 @@ namespace magnify::ui {
 class ConvertDialog : public QDialog {
     Q_OBJECT
 public:
-    ConvertDialog(const QString &fileName, magnify::core::FormatCategory sourceCategory, QWidget *parent = nullptr);
+    // isSingleFile enables the Trim tool (Video/Audio) — it needs one real
+    // file path to probe and trim, so it's not offered for a batch of files.
+    ConvertDialog(const QString &fileName, magnify::core::FormatCategory sourceCategory, QWidget *parent = nullptr,
+                  bool isSingleFile = false);
 
     QString selectedFormat() const { return m_selectedFormat; }
     // Empty unless a preset button was picked; MainWindow merges this into
@@ -34,6 +37,7 @@ private:
     void addCustomSection(QVBoxLayout *layout, const QString &title,
                            const QVector<QPair<QString, QString>> &formats);
     void addPresetSection(QVBoxLayout *layout, magnify::core::FormatCategory category);
+    void addTrimTool(QVBoxLayout *layout, const QString &filePath);
 
     QString m_selectedFormat;
     QVariantMap m_selectedParameters;

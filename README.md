@@ -53,6 +53,8 @@ can be added without touching existing code.
   Discord, WhatsApp, MP3 320 kbps, FLAC, WebP/AVIF for web, PDF compress
   levels), shown right in the conversion popup. Drop your own `*.json`
   presets into a `presets/` folder next to the executable to add more.
+- **Trim** — cut a video or audio file to a start/end time, frame-accurate
+  (not just a keyframe snap), from a TOOLS entry in the format popup.
 - **Video**: MP4, MKV, MOV, MPEG/MPG, WebM, FLV.
 - **Audio**: MP3, WAV, FLAC, AAC, M4A, OGG — including audio extraction
   straight from a video file.
@@ -204,6 +206,8 @@ magnify pdf document.pdf --split
 
 magnify convert report.docx --to pdf
 magnify convert sheet.xlsx --to ods
+
+magnify convert clip.mp4 --to mp4 --trim-start 30 --trim-end 90
 ```
 
 Run `magnify <command> --help` for the full option list.

@@ -22,6 +22,11 @@ public:
     FFmpegCommandBuilder &dropVideoStream();  // -vn, used for audio extraction
     FFmpegCommandBuilder &dropAudioStream();  // -an
 
+    // Cuts the output to [startSeconds, endSeconds), placed after -i so the
+    // seek is frame-accurate (at the cost of decoding from the start of the
+    // file) rather than snapping to the nearest keyframe.
+    FFmpegCommandBuilder &setTrim(double startSeconds, std::optional<double> endSeconds = std::nullopt);
+
     FFmpegCommandBuilder &setResolution(int width, int height);
     FFmpegCommandBuilder &setFrameRate(double fps);
     FFmpegCommandBuilder &setVideoBitrate(const QString &bitrate); // e.g. "4000k"
@@ -53,6 +58,9 @@ private:
     bool m_copyAudio = false;
     bool m_dropVideo = false;
     bool m_dropAudio = false;
+
+    std::optional<double> m_trimStart;
+    std::optional<double> m_trimEnd;
 
     std::optional<int> m_width;
     std::optional<int> m_height;

@@ -51,6 +51,12 @@ FFmpegCommandBuilder &FFmpegCommandBuilder::dropAudioStream() {
     return *this;
 }
 
+FFmpegCommandBuilder &FFmpegCommandBuilder::setTrim(double startSeconds, std::optional<double> endSeconds) {
+    m_trimStart = startSeconds;
+    m_trimEnd = endSeconds;
+    return *this;
+}
+
 FFmpegCommandBuilder &FFmpegCommandBuilder::setResolution(int width, int height) {
     m_width = width;
     m_height = height;
@@ -133,6 +139,13 @@ QStringList FFmpegCommandBuilder::build() const {
 
     args << QStringLiteral("-i") << m_input;
 
+    if (m_trimStart) {
+        args << QStringLiteral("-ss") << QString::number(*m_trimStart, 'f', 3);
+    }
+    if (m_trimEnd) {
+        args << QStringLiteral("-to") << QString::number(*m_trimEnd, 'f', 3);
+    }
+
     if (m_hardwareEncoder) {
         // Hardware encoders (h264_nvenc, hevc_nvenc, h264_amf, h264_qsv, ...)
         // are selected as the video codec directly.
@@ -153,10 +166,6 @@ QStringList FFmpegCommandBuilder::build() const {
         args << QStringLiteral("-c:a") << *m_audioCodec;
     }
 
-    if (m_width && m_height) {
-        args << QStringLiteral("-vf")
-             << QStringLiteral("scale=%1:%2").arg(*m_width).arg(*m_height);
-    }
     if (m_frameRate) {
         args << QStringLiteral("-r") << QString::number(*m_frameRate, 'f', 3);
     }
@@ -183,8 +192,16 @@ QStringList FFmpegCommandBuilder::build() const {
         args << QStringLiteral("-ac") << QString::number(*m_audioChannels);
     }
 
-    if (!m_videoFilters.isEmpty()) {
-        args << QStringLiteral("-vf") << m_videoFilters.join(',');
+    // Scale (from setResolution) and any addVideoFilter() calls must share a
+    // single -vf — ffmpeg only honors the last -vf flag it sees, so emitting
+    // two would silently drop whichever came first.
+    QStringList videoFilters;
+    if (m_width && m_height) {
+        videoFilters << QStringLiteral("scale=%1:%2").arg(*m_width).arg(*m_height);
+    }
+    videoFilters << m_videoFilters;
+    if (!videoFilters.isEmpty()) {
+        args << QStringLiteral("-vf") << videoFilters.join(',');
     }
     if (!m_audioFilters.isEmpty()) {
         args << QStringLiteral("-af") << m_audioFilters.join(',');

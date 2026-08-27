@@ -123,6 +123,8 @@ int runConvert(const QStringList &args, bool isPdfCommand) {
     QCommandLineOption videoBitrateOption("video-bitrate", "Video bitrate, e.g. 6000k.", "rate");
     QCommandLineOption audioBitrateOption("audio-bitrate", "Audio bitrate, e.g. 192k.", "rate");
     QCommandLineOption hardwareOption("hardware", "auto|cpu|nvidia|amd|intel", "vendor", "auto");
+    QCommandLineOption trimStartOption("trim-start", "Cut the output starting at this many seconds.", "seconds");
+    QCommandLineOption trimEndOption("trim-end", "Cut the output ending at this many seconds.", "seconds");
     QCommandLineOption presetOption("preset", "Named preset (see --list-presets).", "name");
     QCommandLineOption listPresetsOption("list-presets", "List available presets and exit.");
     QCommandLineOption outputDirOption(QStringList{"o", "output-dir"}, "Output directory (default: next to source).",
@@ -134,7 +136,7 @@ int runConvert(const QStringList &args, bool isPdfCommand) {
 
     parser.addOptions({toOption, codecOption, crfOption, qualityOption, widthOption, heightOption,
                         videoBitrateOption, audioBitrateOption, hardwareOption, presetOption, listPresetsOption,
-                        outputDirOption, concurrencyOption});
+                        outputDirOption, concurrencyOption, trimStartOption, trimEndOption});
     if (isPdfCommand) {
         parser.addOptions({dpiOption, mergeOption, splitOption});
     }
@@ -232,6 +234,8 @@ int runConvert(const QStringList &args, bool isPdfCommand) {
     if (parser.isSet(audioBitrateOption)) params["audioBitrate"] = parser.value(audioBitrateOption);
     if (isPdfCommand) params["dpi"] = parser.value(dpiOption).toInt();
     params["hardwareBackend"] = parser.value(hardwareOption);
+    if (parser.isSet(trimStartOption)) params["trimStart"] = parser.value(trimStartOption).toDouble();
+    if (parser.isSet(trimEndOption)) params["trimEnd"] = parser.value(trimEndOption).toDouble();
 
     const bool isPdfJob = files.first().endsWith(".pdf", Qt::CaseInsensitive) || targetExt == "pdf";
     const bool isDocumentJob =
