@@ -11,7 +11,7 @@
 ; scripts\build_installer.ps1, which does both steps).
 
 #define MyAppName "MagnifyFactory"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.2.0"
 #define MyAppPublisher "MagnifyFactory contributors"
 #define MyAppURL "https://github.com/victorhmrod/MagnifyFactory"
 #define MyAppExeName "MagnifyFactory.exe"
@@ -48,6 +48,8 @@ Name: "contextmenu"; Description: "Add ""Convert with MagnifyFactory"" to the Ex
 Source: "{#ReleaseDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#ReleaseDir}\*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#ReleaseDir}\platforms\*.dll"; DestDir: "{app}\platforms"; Flags: ignoreversion
+Source: "{#ReleaseDir}\imageformats\*.dll"; DestDir: "{app}\imageformats"; Flags: ignoreversion
+Source: "{#ReleaseDir}\jpeg62.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 
