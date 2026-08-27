@@ -48,3 +48,6 @@ target_link_libraries(smoke_trim PRIVATE Qt6::Core magnify_core magnify_hardware
 
 add_executable(smoke_media_edit smoke_media_edit.cpp)
 target_link_libraries(smoke_media_edit PRIVATE Qt6::Core magnify_core magnify_hardware magnify_engines)
+
+add_executable(smoke_custom_preset smoke_custom_preset.cpp)
+target_link_libraries(smoke_custom_preset PRIVATE Qt6::Core magnify_core magnify_hardware magnify_presets magnify_engines)

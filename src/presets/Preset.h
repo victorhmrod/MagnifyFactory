@@ -18,6 +18,13 @@ struct Preset {
     magnify::core::FormatCategory category = magnify::core::FormatCategory::Unknown;
     QString targetFormat;
     QVariantMap parameters;
+
+    // User-created presets (via the Preset Manager or a hand-dropped JSON
+    // file in presets/) can be deleted from the UI; built-ins cannot.
+    // sourceFilePath is empty for built-ins and non-empty (the JSON file
+    // backing it) for anything loaded from or saved to presets/.
+    bool isUserDefined = false;
+    QString sourceFilePath;
 };
 
 } // namespace magnify::presets

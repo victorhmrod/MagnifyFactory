@@ -68,6 +68,10 @@ set(MAGNIFY_UI_SOURCES
     src/ui/WatchFoldersDialog.cpp
     src/ui/TrimDialog.h
     src/ui/TrimDialog.cpp
+    src/ui/PresetEditorDialog.h
+    src/ui/PresetEditorDialog.cpp
+    src/ui/PresetManagerDialog.h
+    src/ui/PresetManagerDialog.cpp
 )
 
 add_library(magnify_core STATIC ${MAGNIFY_CORE_SOURCES})

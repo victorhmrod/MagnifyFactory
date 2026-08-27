@@ -14,7 +14,31 @@ namespace magnify::presets {
 namespace {
 Preset makePreset(const QString &name, FormatCategory category, const QString &targetFormat,
                    const QVariantMap &parameters) {
-    return Preset{name, category, targetFormat, parameters};
+    return Preset{name, category, targetFormat, parameters, false, QString()};
+}
+
+QString categoryToString(FormatCategory category) {
+    switch (category) {
+        case FormatCategory::Video: return QStringLiteral("video");
+        case FormatCategory::Audio: return QStringLiteral("audio");
+        case FormatCategory::Image: return QStringLiteral("image");
+        case FormatCategory::Pdf: return QStringLiteral("pdf");
+        default: return QString();
+    }
+}
+
+// Turns a preset name into a filesystem-safe filename stem — strips
+// anything but letters/digits/space/dash/underscore so a name like
+// "My Preset (v2)" doesn't produce an invalid or surprising path.
+QString sanitizeFileName(const QString &name) {
+    QString result;
+    for (const QChar &ch : name) {
+        if (ch.isLetterOrNumber() || ch == QChar(' ') || ch == QChar('-') || ch == QChar('_')) {
+            result += ch;
+        }
+    }
+    result = result.trimmed();
+    return result.isEmpty() ? QStringLiteral("preset") : result;
 }
 } // namespace
 
@@ -91,8 +115,58 @@ void PresetRegistry::loadUserPresets() {
             parameters.insert(it.key(), it.value().toVariant());
         }
 
-        m_presets << makePreset(name, category, targetFormat, parameters);
+        Preset preset = makePreset(name, category, targetFormat, parameters);
+        preset.isUserDefined = true;
+        preset.sourceFilePath = fileInfo.absoluteFilePath();
+        m_presets << preset;
     }
+}
+
+void PresetRegistry::addUserPreset(Preset preset) {
+    QDir presetsDir(QCoreApplication::applicationDirPath() + QStringLiteral("/presets"));
+    if (!presetsDir.exists()) {
+        presetsDir.mkpath(QStringLiteral("."));
+    }
+
+    QString filePath = presetsDir.filePath(sanitizeFileName(preset.name) + QStringLiteral(".json"));
+    int suffix = 2;
+    while (QFileInfo::exists(filePath)) {
+        filePath = presetsDir.filePath(
+            QStringLiteral("%1 %2.json").arg(sanitizeFileName(preset.name)).arg(suffix++));
+    }
+
+    QJsonObject obj;
+    obj.insert(QStringLiteral("name"), preset.name);
+    obj.insert(QStringLiteral("category"), categoryToString(preset.category));
+    obj.insert(QStringLiteral("targetFormat"), preset.targetFormat);
+    QJsonObject paramsObj;
+    for (auto it = preset.parameters.constBegin(); it != preset.parameters.constEnd(); ++it) {
+        paramsObj.insert(it.key(), QJsonValue::fromVariant(it.value()));
+    }
+    obj.insert(QStringLiteral("parameters"), paramsObj);
+
+    QFile file(filePath);
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
+        file.close();
+    }
+
+    preset.isUserDefined = true;
+    preset.sourceFilePath = filePath;
+    m_presets << preset;
+}
+
+bool PresetRegistry::removeUserPreset(const QString &name) {
+    for (int i = 0; i < m_presets.size(); ++i) {
+        if (m_presets[i].isUserDefined && m_presets[i].name == name) {
+            if (!m_presets[i].sourceFilePath.isEmpty()) {
+                QFile::remove(m_presets[i].sourceFilePath);
+            }
+            m_presets.remove(i);
+            return true;
+        }
+    }
+    return false;
 }
 
 QVector<Preset> PresetRegistry::presetsForCategory(FormatCategory category) const {

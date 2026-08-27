@@ -54,14 +54,21 @@ can be added without touching existing code.
   was compiled with), and lets you pick one from the queue controls.
 - **Presets** — one-click bundles of format + settings (YouTube 1080p/4K,
   Discord, WhatsApp, MP3 320 kbps, FLAC, WebP/AVIF for web, PDF compress
-  levels), shown right in the conversion popup. Drop your own `*.json`
-  presets into a `presets/` folder next to the executable to add more.
+  levels), shown right in the conversion popup. Click **Presets...** to open
+  the preset manager and build your own: quality/CRF, resolution (enter a
+  size bigger than the source to upscale — scaled with `lanczos` for a
+  sharper result than the default), bitrate, per-format image quality. Saved
+  as a plain `*.json` file in `presets/` next to the executable — drop one in
+  by hand to add more, or delete a user-created one from the manager.
 - **Trim** — cut a video or audio file to a start/end time, frame-accurate
   (not just a keyframe snap), from a TOOLS entry in the format popup.
 - **Video**: MP4, MKV, MOV, MPEG/MPG, WebM, FLV.
 - **Audio**: MP3, WAV, FLAC, AAC, M4A, OGG — including audio extraction
   straight from a video file.
-- **Images**: PNG, JPEG, WebP, AVIF, BMP, TIFF, GIF.
+- **Images**: PNG, JPEG, WebP, AVIF, BMP, TIFF, GIF — plus a TOOLS entry to
+  rotate a single image 90°/180°.
+- **Extract subtitles** — pulls a video's embedded subtitle track out to a
+  `.srt` file, from a TOOLS entry in the format popup.
 - **PDF ↔ image**: render a PDF's first page to PNG/JPEG (Poppler), or embed
   an image losslessly into a single-page PDF.
 - **PDF tools**: compress (recompress embedded images/streams), merge several

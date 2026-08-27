@@ -69,6 +69,7 @@ private:
     void populateHardwareCombo();
     void onHardwareDetectionFinished();
     void openWatchFoldersDialog();
+    void openPresetManagerDialog();
     void onWatchedFileDetected(const QString &filePath, const magnify::watch::WatchRule &rule);
     void loadSettings();
     void saveSettings();

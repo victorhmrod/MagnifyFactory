@@ -27,6 +27,7 @@
 #include <QtConcurrentRun>
 
 #include "ConvertDialog.h"
+#include "PresetManagerDialog.h"
 #include "WatchFoldersDialog.h"
 #include "core/ConversionJob.h"
 #include "core/FormatRegistry.h"
@@ -238,6 +239,10 @@ void MainWindow::buildUi() {
     connect(watchFoldersButton, &QPushButton::clicked, this, &MainWindow::openWatchFoldersDialog);
     controlsRow->addWidget(watchFoldersButton);
 
+    auto *presetsButton = new QPushButton(QStringLiteral("Presets..."), content);
+    connect(presetsButton, &QPushButton::clicked, this, &MainWindow::openPresetManagerDialog);
+    controlsRow->addWidget(presetsButton);
+
     controlsRow->addStretch(1);
     contentLayout->addLayout(controlsRow);
 
@@ -264,6 +269,11 @@ void MainWindow::onHardwareDetectionFinished() {
 
 void MainWindow::openWatchFoldersDialog() {
     WatchFoldersDialog dialog(m_watchFolderManager.get(), this);
+    dialog.exec();
+}
+
+void MainWindow::openPresetManagerDialog() {
+    PresetManagerDialog dialog(this);
     dialog.exec();
 }
 
