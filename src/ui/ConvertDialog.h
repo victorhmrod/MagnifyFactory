@@ -2,6 +2,7 @@
 
 #include <QDialog>
 #include <QPair>
+#include <QPixmap>
 #include <QString>
 #include <QVariantMap>
 #include <QVector>
@@ -10,6 +11,8 @@
 
 QT_BEGIN_NAMESPACE
 class QVBoxLayout;
+class QLabel;
+class QPushButton;
 QT_END_NAMESPACE
 
 namespace magnify::ui {
@@ -18,12 +21,19 @@ namespace magnify::ui {
 // the Windows "Convert with MagnifyFactory" context menu). Presents target
 // formats as a grid of buttons grouped by category, plus a row of presets
 // (if any exist for the category) that set both the format and a bundle of
-// engine parameters at once. Picking either accepts the dialog.
+// engine parameters at once.
+//
+// For Image/PDF sources with a single file, picking a format or tool does
+// NOT immediately accept the dialog: it stages the pick and updates an
+// inline original-vs-result preview pane, and a separate "Convert" button
+// commits it. Other categories (no cheap visual preview to show) keep the
+// original one-click-to-accept behavior.
 class ConvertDialog : public QDialog {
     Q_OBJECT
 public:
-    // isSingleFile enables the Trim tool (Video/Audio) — it needs one real
-    // file path to probe and trim, so it's not offered for a batch of files.
+    // isSingleFile enables the Trim tool (Video/Audio) and the preview pane
+    // (Image/PDF) — both need one real file path, so neither is offered for
+    // a batch of files.
     ConvertDialog(const QString &fileName, magnify::core::FormatCategory sourceCategory, QWidget *parent = nullptr,
                   bool isSingleFile = false);
 
@@ -38,9 +48,30 @@ private:
                            const QVector<QPair<QString, QString>> &formats);
     void addPresetSection(QVBoxLayout *layout, magnify::core::FormatCategory category);
     void addTrimTool(QVBoxLayout *layout, const QString &filePath);
+    void addRotateTool(QVBoxLayout *layout, const QString &filePath);
+    void addSubtitleExtractTool(QVBoxLayout *layout);
+
+    // Loads m_originalPixmap for the preview pane (Image: read directly;
+    // PDF: render page 1 via pdftoppm), synchronously — this only runs once,
+    // at dialog construction, for a single-file Image/PDF selection.
+    void loadOriginalPreview(const QString &filePath, magnify::core::FormatCategory category);
+    QWidget *buildPreviewPane();
+    // Stages a pick (instead of accepting immediately) and refreshes the
+    // result thumbnail; the Convert button commits it to m_selected*.
+    void selectPending(const QString &ext, const QVariantMap &parameters);
+    void updateResultPreview();
 
     QString m_selectedFormat;
     QVariantMap m_selectedParameters;
+
+    bool m_useConfirmFlow = false;
+    magnify::core::FormatCategory m_sourceCategory;
+    QString m_pendingFormat;
+    QVariantMap m_pendingParameters;
+    QPixmap m_originalPixmap;
+    QLabel *m_originalPreviewLabel = nullptr;
+    QLabel *m_resultPreviewLabel = nullptr;
+    QPushButton *m_convertButton = nullptr;
 };
 
 } // namespace magnify::ui

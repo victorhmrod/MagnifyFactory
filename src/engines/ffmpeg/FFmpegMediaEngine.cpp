@@ -57,6 +57,25 @@ QStringList FFmpegMediaEngine::buildArgsForJob(ConversionJob *job, const MediaPr
     const FormatCategory targetCategory = FormatRegistry::instance().categoryOf(targetExt);
     const auto &params = job->parameters();
 
+    // Extracting a subtitle track is a fundamentally different ffmpeg
+    // invocation (map the subtitle stream, drop everything else) than any
+    // convert/trim path below, so it's handled as its own early return.
+    if (params.value(QStringLiteral("operation")).toString() == QStringLiteral("extractSubtitles")) {
+        builder.addExtraArgs({QStringLiteral("-map"), QStringLiteral("0:s:0"), QStringLiteral("-c:s"),
+                               QStringLiteral("srt")});
+        return builder.build();
+    }
+
+    if (params.contains(QStringLiteral("rotate"))) {
+        switch (params.value(QStringLiteral("rotate")).toInt()) {
+            case 90: builder.addVideoFilter(QStringLiteral("transpose=1")); break;
+            case -90:
+            case 270: builder.addVideoFilter(QStringLiteral("transpose=2")); break;
+            case 180: builder.addVideoFilter(QStringLiteral("transpose=1,transpose=1")); break;
+            default: break;
+        }
+    }
+
     const bool wantsTrim =
         params.contains(QStringLiteral("trimStart")) || params.contains(QStringLiteral("trimEnd"));
     if (wantsTrim) {

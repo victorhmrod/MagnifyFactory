@@ -1,10 +1,16 @@
 #include "ConvertDialog.h"
 
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QImageReader>
 #include <QLabel>
+#include <QProcess>
 #include <QPushButton>
+#include <QTransform>
+#include <QUuid>
 #include <QVBoxLayout>
 
 #include "TrimDialog.h"
@@ -17,12 +23,26 @@ using magnify::presets::PresetRegistry;
 
 namespace magnify::ui {
 
+namespace {
+constexpr int kPreviewSide = 160;
+
+QLabel *makePreviewSlot(QWidget *parent) {
+    auto *label = new QLabel(parent);
+    label->setFixedSize(kPreviewSide, kPreviewSide);
+    label->setAlignment(Qt::AlignCenter);
+    label->setWordWrap(true);
+    label->setStyleSheet(
+        QStringLiteral("background-color: #12141a; border: 1px solid #2a2f37; border-radius: 4px; color: #8b949e;"));
+    return label;
+}
+} // namespace
+
 ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCategory, QWidget *parent,
                               bool isSingleFile)
-    : QDialog(parent) {
+    : QDialog(parent), m_sourceCategory(sourceCategory) {
     setWindowTitle(QStringLiteral("Convert"));
     setModal(true);
-    setMinimumWidth(420);
+    setMinimumWidth(460);
     setStyleSheet(R"(
         QDialog { background-color: #1e2126; color: #c9d1d9; }
         QLabel#title { font-size: 15px; font-weight: 600; color: #ffffff; }
@@ -34,6 +54,9 @@ ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCateg
         QPushButton[class="formatButton"]:hover { background-color: #2f6feb; border-color: #2f6feb; color: white; }
     )");
 
+    m_useConfirmFlow =
+        isSingleFile && (sourceCategory == FormatCategory::Image || sourceCategory == FormatCategory::Pdf);
+
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(24, 20, 24, 20);
     layout->setSpacing(4);
@@ -42,6 +65,13 @@ ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCateg
     title->setObjectName(QStringLiteral("title"));
     title->setWordWrap(true);
     layout->addWidget(title);
+
+    if (m_useConfirmFlow) {
+        loadOriginalPreview(fileName, sourceCategory);
+        layout->addSpacing(8);
+        layout->addWidget(buildPreviewPane());
+        layout->addSpacing(4);
+    }
 
     // Offer the source's own category first, plus sensible cross-category
     // targets (e.g. a video can be converted straight to an audio format).
@@ -53,6 +83,7 @@ ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCateg
             addPresetSection(layout, FormatCategory::Video);
             addFormatSection(layout, QStringLiteral("VIDEO"), FormatCategory::Video);
             addFormatSection(layout, QStringLiteral("EXTRACT AUDIO"), FormatCategory::Audio);
+            addSubtitleExtractTool(layout);
             break;
         case FormatCategory::Audio:
             if (isSingleFile) {
@@ -62,6 +93,9 @@ ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCateg
             addFormatSection(layout, QStringLiteral("AUDIO"), FormatCategory::Audio);
             break;
         case FormatCategory::Image:
+            if (isSingleFile) {
+                addRotateTool(layout, fileName);
+            }
             addPresetSection(layout, FormatCategory::Image);
             addFormatSection(layout, QStringLiteral("IMAGE"), FormatCategory::Image);
             addCustomSection(layout, QStringLiteral("DOCUMENT"), {{QStringLiteral("PDF"), QStringLiteral("pdf")}});
@@ -91,6 +125,115 @@ ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCateg
             addFormatSection(layout, QStringLiteral("AUDIO"), FormatCategory::Audio);
             addFormatSection(layout, QStringLiteral("IMAGE"), FormatCategory::Image);
             break;
+    }
+
+    if (m_useConfirmFlow) {
+        auto *buttonRow = new QHBoxLayout();
+        buttonRow->addStretch(1);
+        auto *cancelButton = new QPushButton(QStringLiteral("Cancel"), this);
+        connect(cancelButton, &QPushButton::clicked, this, &QDialog::reject);
+        m_convertButton = new QPushButton(QStringLiteral("Convert"), this);
+        m_convertButton->setEnabled(false);
+        m_convertButton->setDefault(true);
+        connect(m_convertButton, &QPushButton::clicked, this, [this]() {
+            m_selectedFormat = m_pendingFormat;
+            m_selectedParameters = m_pendingParameters;
+            accept();
+        });
+        buttonRow->addWidget(cancelButton);
+        buttonRow->addWidget(m_convertButton);
+        layout->addSpacing(8);
+        layout->addLayout(buttonRow);
+    }
+}
+
+void ConvertDialog::loadOriginalPreview(const QString &filePath, FormatCategory category) {
+    if (category == FormatCategory::Image) {
+        QImageReader reader(filePath);
+        reader.setAutoTransform(true);
+        const QImage image = reader.read();
+        if (!image.isNull()) {
+            m_originalPixmap = QPixmap::fromImage(image);
+        }
+        return;
+    }
+
+    if (category == FormatCategory::Pdf) {
+        // Render page 1 at a modest DPI for the preview thumbnail, via the
+        // same pdftoppm tool PdfEngine itself uses for the real conversion.
+        const QString tempPrefix =
+            QDir::temp().filePath(QStringLiteral("magnify_preview_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
+        QProcess proc;
+        proc.start(QStringLiteral("pdftoppm"), {QStringLiteral("-png"), QStringLiteral("-singlefile"),
+                                                 QStringLiteral("-r"), QStringLiteral("80"), QStringLiteral("-f"),
+                                                 QStringLiteral("1"), QStringLiteral("-l"), QStringLiteral("1"),
+                                                 filePath, tempPrefix});
+        proc.waitForFinished(5000);
+        const QString producedPath = tempPrefix + QStringLiteral(".png");
+        if (QFileInfo::exists(producedPath)) {
+            m_originalPixmap = QPixmap(producedPath);
+            QFile::remove(producedPath);
+        }
+    }
+}
+
+QWidget *ConvertDialog::buildPreviewPane() {
+    auto *frame = new QWidget(this);
+    auto *previewLayout = new QHBoxLayout(frame);
+    previewLayout->setContentsMargins(0, 0, 0, 0);
+
+    m_originalPreviewLabel = makePreviewSlot(this);
+    if (!m_originalPixmap.isNull()) {
+        m_originalPreviewLabel->setPixmap(
+            m_originalPixmap.scaled(kPreviewSide, kPreviewSide, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    } else {
+        m_originalPreviewLabel->setText(QStringLiteral("No preview"));
+    }
+
+    auto *arrowLabel = new QLabel(QStringLiteral("→"), this);
+    QFont arrowFont = arrowLabel->font();
+    arrowFont.setPointSize(20);
+    arrowLabel->setFont(arrowFont);
+
+    m_resultPreviewLabel = makePreviewSlot(this);
+    m_resultPreviewLabel->setText(QStringLiteral("Pick a format"));
+
+    previewLayout->addStretch(1);
+    previewLayout->addWidget(m_originalPreviewLabel);
+    previewLayout->addWidget(arrowLabel);
+    previewLayout->addWidget(m_resultPreviewLabel);
+    previewLayout->addStretch(1);
+    return frame;
+}
+
+void ConvertDialog::selectPending(const QString &ext, const QVariantMap &parameters) {
+    m_pendingFormat = ext;
+    m_pendingParameters = parameters;
+    updateResultPreview();
+    if (m_convertButton) {
+        m_convertButton->setEnabled(true);
+    }
+}
+
+void ConvertDialog::updateResultPreview() {
+    if (!m_resultPreviewLabel) {
+        return;
+    }
+
+    QPixmap result = m_originalPixmap;
+    if (m_pendingParameters.contains(QStringLiteral("rotate")) && !result.isNull()) {
+        QTransform transform;
+        transform.rotate(m_pendingParameters.value(QStringLiteral("rotate")).toInt());
+        result = result.transformed(transform, Qt::SmoothTransformation);
+    }
+
+    if (result.isNull()) {
+        m_resultPreviewLabel->setPixmap(QPixmap());
+        m_resultPreviewLabel->setText(QStringLiteral("No preview available"));
+    } else {
+        m_resultPreviewLabel->setText(QString());
+        m_resultPreviewLabel->setPixmap(
+            result.scaled(kPreviewSide, kPreviewSide, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     }
 }
 
@@ -124,6 +267,10 @@ void ConvertDialog::addPresetSection(QVBoxLayout *layout, FormatCategory categor
         button->setProperty("class", QStringLiteral("formatButton"));
         button->setCursor(Qt::PointingHandCursor);
         connect(button, &QPushButton::clicked, this, [this, preset]() {
+            if (m_useConfirmFlow) {
+                selectPending(preset.targetFormat, preset.parameters);
+                return;
+            }
             m_selectedFormat = preset.targetFormat;
             m_selectedParameters = preset.parameters;
             accept();
@@ -157,6 +304,10 @@ void ConvertDialog::addCustomSection(QVBoxLayout *layout, const QString &title,
         button->setProperty("class", QStringLiteral("formatButton"));
         button->setCursor(Qt::PointingHandCursor);
         connect(button, &QPushButton::clicked, this, [this, ext]() {
+            if (m_useConfirmFlow) {
+                selectPending(ext, {});
+                return;
+            }
             m_selectedFormat = ext;
             accept();
         });
@@ -185,6 +336,58 @@ void ConvertDialog::addTrimTool(QVBoxLayout *layout, const QString &filePath) {
         m_selectedFormat = QFileInfo(filePath).suffix().toLower();
         m_selectedParameters = {{QStringLiteral("trimStart"), trimDialog.startSeconds()},
                                  {QStringLiteral("trimEnd"), trimDialog.endSeconds()}};
+        accept();
+    });
+
+    auto *row = new QHBoxLayout();
+    row->addWidget(button);
+    row->addStretch(1);
+    layout->addLayout(row);
+}
+
+void ConvertDialog::addRotateTool(QVBoxLayout *layout, const QString &filePath) {
+    auto *sectionLabel = new QLabel(QStringLiteral("TOOLS"), this);
+    sectionLabel->setObjectName(QStringLiteral("section"));
+    layout->addWidget(sectionLabel);
+
+    const QString sourceExt = QFileInfo(filePath).suffix().toLower();
+
+    auto *ccwButton = new QPushButton(QStringLiteral("⟲ Rotate CCW"), this);
+    auto *cwButton = new QPushButton(QStringLiteral("⟳ Rotate CW"), this);
+    ccwButton->setProperty("class", QStringLiteral("formatButton"));
+    cwButton->setProperty("class", QStringLiteral("formatButton"));
+    ccwButton->setCursor(Qt::PointingHandCursor);
+    cwButton->setCursor(Qt::PointingHandCursor);
+
+    // Each click reads the rotation staged by the previous one (0 if none
+    // yet) and advances it by 90°, so repeated clicks cycle 0->90->180->270.
+    connect(ccwButton, &QPushButton::clicked, this, [this, sourceExt]() {
+        const int current = m_pendingParameters.value(QStringLiteral("rotate"), 0).toInt();
+        selectPending(sourceExt, {{QStringLiteral("rotate"), (current + 270) % 360}});
+    });
+    connect(cwButton, &QPushButton::clicked, this, [this, sourceExt]() {
+        const int current = m_pendingParameters.value(QStringLiteral("rotate"), 0).toInt();
+        selectPending(sourceExt, {{QStringLiteral("rotate"), (current + 90) % 360}});
+    });
+
+    auto *row = new QHBoxLayout();
+    row->addWidget(ccwButton);
+    row->addWidget(cwButton);
+    row->addStretch(1);
+    layout->addLayout(row);
+}
+
+void ConvertDialog::addSubtitleExtractTool(QVBoxLayout *layout) {
+    auto *sectionLabel = new QLabel(QStringLiteral("TOOLS"), this);
+    sectionLabel->setObjectName(QStringLiteral("section"));
+    layout->addWidget(sectionLabel);
+
+    auto *button = new QPushButton(QStringLiteral("Extract Subtitles (.srt)"), this);
+    button->setProperty("class", QStringLiteral("formatButton"));
+    button->setCursor(Qt::PointingHandCursor);
+    connect(button, &QPushButton::clicked, this, [this]() {
+        m_selectedFormat = QStringLiteral("srt");
+        m_selectedParameters = {{QStringLiteral("operation"), QStringLiteral("extractSubtitles")}};
         accept();
     });
 

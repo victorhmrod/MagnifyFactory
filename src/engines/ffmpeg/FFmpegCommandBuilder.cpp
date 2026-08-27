@@ -197,7 +197,10 @@ QStringList FFmpegCommandBuilder::build() const {
     // two would silently drop whichever came first.
     QStringList videoFilters;
     if (m_width && m_height) {
-        videoFilters << QStringLiteral("scale=%1:%2").arg(*m_width).arg(*m_height);
+        // lanczos is noticeably sharper than ffmpeg's bilinear default,
+        // which matters most when upscaling (a preset asking for a bigger
+        // size than the source, e.g. 480p -> 1080p).
+        videoFilters << QStringLiteral("scale=%1:%2:flags=lanczos").arg(*m_width).arg(*m_height);
     }
     videoFilters << m_videoFilters;
     if (!videoFilters.isEmpty()) {

@@ -68,6 +68,9 @@ void FormatRegistry::registerBuiltins() {
     registerFormat({"Rich Text", "rtf", FormatCategory::Document, {"application/rtf"}, true, true});
     registerFormat({"Plain Text", "txt", FormatCategory::Document, {"text/plain"}, true, true});
 
+    // --- Subtitles (extracted from video via ffmpeg) ---------------------------
+    registerFormat({"SubRip", "srt", FormatCategory::Subtitle, {"application/x-subrip"}, true, true});
+
     // --- Archives --------------------------------------------------------------
     // zip/7z can be created by 7-Zip; rar/tar/gz are extraction-only (creating a
     // proprietary .rar isn't something 7-Zip's free CLI can do).
