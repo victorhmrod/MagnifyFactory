@@ -116,6 +116,12 @@ run it. It's a per-user install (no admin rights needed) with an optional
 checkbox to add *Convert with MagnifyFactory* to the Explorer right-click
 menu, and it registers an uninstaller.
 
+MagnifyFactory's installer is not code-signed yet. Microsoft Defender
+SmartScreen may show a "Windows protected your PC" warning with "Unknown
+publisher" when you run it. If you downloaded the installer from this
+repository's Releases page, choose **More info** and then **Run anyway** to
+continue.
+
 MagnifyFactory shells out to external tools rather than bundling them —
 make sure these are on your `PATH`:
 - `ffmpeg` / `ffprobe` (e.g. `winget install Gyan.FFmpeg`) for video/audio/image conversion
