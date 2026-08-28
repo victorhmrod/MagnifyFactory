@@ -372,6 +372,22 @@ void MainWindow::addInputFiles(const QStringList &paths) {
                               QStringLiteral("Skipped unrecognized file(s):\n%1").arg(unrecognized.join('\n')));
     }
 
+    // A drop containing both PDFs and images is offered as a single merge
+    // spanning both categories, before the regular per-category loop below
+    // (which only ever sees one category at a time). Declining here just
+    // falls through to the normal per-category handling for each.
+    if (byCategory.contains(FormatCategory::Pdf) && byCategory.contains(FormatCategory::Image)) {
+        const QStringList pdfAndImageFiles = byCategory.value(FormatCategory::Pdf) + byCategory.value(FormatCategory::Image);
+        const auto reply = QMessageBox::question(
+            this, QStringLiteral("MagnifyFactory"),
+            QStringLiteral("Merge %1 PDFs and images into one PDF?").arg(pdfAndImageFiles.size()));
+        if (reply == QMessageBox::Yes) {
+            mergeIntoPdf(pdfAndImageFiles);
+            byCategory.remove(FormatCategory::Pdf);
+            byCategory.remove(FormatCategory::Image);
+        }
+    }
+
     // One popup per category, not per file, so dropping a folder full of the
     // same file type only asks the user once.
     for (auto it = byCategory.constBegin(); it != byCategory.constEnd(); ++it) {
@@ -401,7 +417,7 @@ void MainWindow::addInputFiles(const QStringList &paths) {
         }
 
         if (files.size() > 1) {
-            const bool offerMerge = category == FormatCategory::Pdf;
+            const bool offerMerge = category == FormatCategory::Pdf || category == FormatCategory::Image;
             QMessageBox box(this);
             box.setWindowTitle(QStringLiteral("MagnifyFactory"));
             box.setText(QStringLiteral("You selected %1 files. What would you like to do?").arg(files.size()));
@@ -412,7 +428,7 @@ void MainWindow::addInputFiles(const QStringList &paths) {
             box.exec();
 
             if (mergeButton && box.clickedButton() == mergeButton) {
-                mergePdfs(files);
+                mergeIntoPdf(files);
                 continue;
             }
             if (box.clickedButton() == zipButton) {
@@ -432,24 +448,24 @@ void MainWindow::addInputFiles(const QStringList &paths) {
     }
 }
 
-void MainWindow::mergePdfs(const QStringList &pdfPaths) {
-    const QFileInfo firstInfo(pdfPaths.first());
+void MainWindow::mergeIntoPdf(const QStringList &files) {
+    const QFileInfo firstInfo(files.first());
     const QDir outDir = firstInfo.absoluteDir();
-    QString outputPath = outDir.filePath(QStringLiteral("Merged (%1 files).pdf").arg(pdfPaths.size()));
+    QString outputPath = outDir.filePath(QStringLiteral("Merged (%1 files).pdf").arg(files.size()));
     int suffix = 2;
     while (QFileInfo::exists(outputPath)) {
-        outputPath = outDir.filePath(QStringLiteral("Merged (%1 files) %2.pdf").arg(pdfPaths.size()).arg(suffix++));
+        outputPath = outDir.filePath(QStringLiteral("Merged (%1 files) %2.pdf").arg(files.size()).arg(suffix++));
     }
 
-    auto job = std::make_unique<ConversionJob>(pdfPaths.first(), outputPath);
-    job->setExtraInputPaths(pdfPaths.mid(1));
+    auto job = std::make_unique<ConversionJob>(files.first(), outputPath);
+    job->setExtraInputPaths(files.mid(1));
     job->setSourceFormat(QStringLiteral("pdf"));
     job->setTargetFormat(QStringLiteral("pdf"));
     job->setEngineName(QStringLiteral("PDF Tools"));
     job->setParameters({{QStringLiteral("operation"), QStringLiteral("merge")}});
 
     m_jobManager->addJob(std::move(job));
-    statusBar()->showMessage(QStringLiteral("Queued: merge %1 PDFs").arg(pdfPaths.size()), 4000);
+    statusBar()->showMessage(QStringLiteral("Queued: merge %1 files into one PDF").arg(files.size()), 4000);
 }
 
 void MainWindow::compressToZip(const QStringList &files) {

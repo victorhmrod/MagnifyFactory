@@ -59,7 +59,9 @@ private:
     void addInputFiles(const QStringList &paths);
     void addInputFolder();
     void enqueueFile(const QString &inputPath, const QString &targetExt, const QVariantMap &presetParameters = {});
-    void mergePdfs(const QStringList &pdfPaths);
+    // Merges PDFs and/or images (any mix) into one PDF — each image becomes
+    // a page, via PdfEngine's merge operation.
+    void mergeIntoPdf(const QStringList &files);
     void compressToZip(const QStringList &files);
     void extractArchive(const QString &archivePath);
     void refreshRow(magnify::core::ConversionJob *job);

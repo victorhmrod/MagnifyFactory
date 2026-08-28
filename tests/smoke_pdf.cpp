@@ -7,6 +7,7 @@
 #include <QEventLoop>
 #include <QImage>
 #include <QImageReader>
+#include <QProcess>
 #include <QRandomGenerator>
 #include <QTimer>
 #include <QDebug>
@@ -154,6 +155,55 @@ int main(int argc, char *argv[]) {
         } else {
             fprintf(stderr, "FAILED merge: %s\n", qPrintable(raw->errorMessage()));
             allOk = false;
+        }
+    }
+
+    // Merge (mixed): a real PDF + a raw PNG + a raw JPEG -> one 3-page PDF.
+    // Exercises both image pre-conversion paths in PdfEngine::mergePdf
+    // (direct JPEG embed, and PNG -> ffmpeg -> JPEG -> embed), unlike the
+    // pure-PDF merge above.
+    {
+        QImage jpgImage(300, 200, QImage::Format_RGB32);
+        jpgImage.fill(QColor(220, 90, 40));
+        const QString jpgPath = dir + "/sample.jpg";
+        jpgImage.save(jpgPath, "JPG");
+
+        const QString mixedMergedPath = dir + "/merged_mixed.pdf";
+        auto job = std::make_unique<ConversionJob>(pdfPath, mixedMergedPath);
+        job->setExtraInputPaths({pngPath, jpgPath});
+        job->setSourceFormat("pdf");
+        job->setTargetFormat("pdf");
+        job->setEngineName("PDF Tools");
+        job->setParameters({{"operation", "merge"}});
+        ConversionJob *raw = manager.addJob(std::move(job));
+
+        QEventLoop loop;
+        bool finished = false, ok = false;
+        QObject::connect(raw, &ConversionJob::statusChanged, &loop, [&](JobStatus status) {
+            if (status == JobStatus::Completed || status == JobStatus::Failed) {
+                finished = true;
+                ok = (status == JobStatus::Completed);
+                loop.quit();
+            }
+        });
+        QTimer::singleShot(30000, &loop, &QEventLoop::quit);
+        manager.startQueue();
+        loop.exec();
+
+        if (!finished || !ok) {
+            fprintf(stderr, "FAILED mixed merge: %s\n", qPrintable(raw->errorMessage()));
+            allOk = false;
+        } else {
+            QProcess pageCount;
+            pageCount.start("qpdf", {"--show-npages", mixedMergedPath});
+            pageCount.waitForFinished(10000);
+            const int pages = QString::fromUtf8(pageCount.readAllStandardOutput()).trimmed().toInt();
+            if (pages == 3) {
+                fprintf(stderr, "OK: mixed merge (pdf+png+jpg) produced a %d-page PDF\n", pages);
+            } else {
+                fprintf(stderr, "FAILED: mixed merge produced %d pages, expected 3\n", pages);
+                allOk = false;
+            }
         }
     }
 

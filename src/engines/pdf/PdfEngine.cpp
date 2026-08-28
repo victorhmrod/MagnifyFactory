@@ -6,6 +6,7 @@
 #include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QUuid>
+#include <memory>
 
 #include "PdfImageWriter.h"
 #include "core/ConversionJob.h"
@@ -63,6 +64,18 @@ void PdfEngine::runProcess(ConversionJob *job, const QString &program, const QSt
                 onFinished(process, exitCode, exitStatus);
                 process->deleteLater();
             });
+    // Without this, a process that fails to even start (the tool missing
+    // from PATH, permissions, ...) never emits finished(), and the job —
+    // and anything waiting on its statusChanged signal — hangs forever
+    // instead of failing with a clear message.
+    connect(process, &QProcess::errorOccurred, this, [this, job, process](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart || !m_runningProcesses.contains(job->id())) {
+            return;
+        }
+        m_runningProcesses.remove(job->id());
+        finishJob(job, false, QStringLiteral("Could not start %1: %2").arg(process->program(), process->errorString()));
+        process->deleteLater();
+    });
 
     process->start(program, args);
 }
@@ -168,16 +181,98 @@ void PdfEngine::compressPdf(ConversionJob *job) {
 }
 
 void PdfEngine::mergePdf(ConversionJob *job) {
+    auto inputs = std::make_shared<QStringList>();
+    *inputs << job->inputPath();
+    *inputs << job->extraInputPaths();
+    auto tempFiles = std::make_shared<QStringList>();
+    convertNextMergeInput(job, inputs, 0, tempFiles);
+}
+
+void PdfEngine::convertNextMergeInput(ConversionJob *job, std::shared_ptr<QStringList> inputs, int index,
+                                       std::shared_ptr<QStringList> tempFiles) {
+    if (index >= inputs->size()) {
+        runMergeQpdf(job, inputs, tempFiles);
+        return;
+    }
+
+    const QString path = inputs->at(index);
+    if (path.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive)) {
+        convertNextMergeInput(job, inputs, index + 1, tempFiles);
+        return;
+    }
+
+    // Non-PDF entry: an image being merged alongside PDFs (or with other
+    // images) — turn it into a single-page temp PDF first, same embedding
+    // path convertImageToPdf() uses (JPEG embeds directly; anything else is
+    // re-encoded to JPEG via ffmpeg first), then substitute it in place and
+    // move on to the next input.
+    const QString tempPdfPath =
+        QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+            .filePath(QStringLiteral("magnify_merge_%1.pdf").arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
+
+    auto embedAndContinue = [this, job, inputs, index, tempFiles, tempPdfPath](const QString &jpegPath) {
+        QString error;
+        const bool ok = PdfImageWriter::writeSingleImagePdf(jpegPath, tempPdfPath, &error);
+        if (!ok) {
+            finishJob(job, false,
+                      QStringLiteral("Could not prepare %1 for merging: %2").arg(inputs->at(index), error));
+            return;
+        }
+        (*inputs)[index] = tempPdfPath;
+        tempFiles->append(tempPdfPath);
+        convertNextMergeInput(job, inputs, index + 1, tempFiles);
+    };
+
+    const QString ext = QFileInfo(path).suffix().toLower();
+    if (ext == QStringLiteral("jpg") || ext == QStringLiteral("jpeg")) {
+        embedAndContinue(path);
+        return;
+    }
+
+    auto *tempFile = new QTemporaryFile(
+        QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation)).filePath("magnify_XXXXXX.jpg"), this);
+    tempFile->setAutoRemove(false);
+    if (!tempFile->open()) {
+        finishJob(job, false, QStringLiteral("Could not create a temporary file for image conversion."));
+        tempFile->deleteLater();
+        return;
+    }
+    const QString tempJpegPath = tempFile->fileName();
+    tempFile->close();
+
+    runProcess(job, QStringLiteral("ffmpeg"), {QStringLiteral("-y"), QStringLiteral("-i"), path, tempJpegPath},
+               [this, job, tempJpegPath, tempFile, embedAndContinue](QProcess *process, int exitCode,
+                                                                       QProcess::ExitStatus exitStatus) {
+                   const bool reencodeOk =
+                       exitStatus == QProcess::NormalExit && exitCode == 0 && QFileInfo::exists(tempJpegPath);
+                   if (!reencodeOk) {
+                       QFile::remove(tempJpegPath);
+                       tempFile->deleteLater();
+                       finishJob(job, false, QStringLiteral("Could not prepare image for merging: %1")
+                                                 .arg(QString::fromUtf8(process->readAllStandardError())));
+                       return;
+                   }
+                   embedAndContinue(tempJpegPath);
+                   QFile::remove(tempJpegPath);
+                   tempFile->deleteLater();
+               });
+}
+
+void PdfEngine::runMergeQpdf(ConversionJob *job, std::shared_ptr<QStringList> inputs,
+                              std::shared_ptr<QStringList> tempFiles) {
     // `qpdf --empty --pages A B C -- out.pdf` concatenates every page of
     // A, B, C (in order) into out.pdf; --empty is a required dummy "base"
     // document since --pages is otherwise meant to select from an existing
     // one. Omitting a page range after each filename defaults to "all pages".
-    QStringList args{QStringLiteral("--empty"), QStringLiteral("--pages"), job->inputPath()};
-    args << job->extraInputPaths();
+    QStringList args{QStringLiteral("--empty"), QStringLiteral("--pages")};
+    args << *inputs;
     args << QStringLiteral("--") << job->outputPath();
 
     runProcess(job, QStringLiteral("qpdf"), args,
-               [this, job](QProcess *process, int exitCode, QProcess::ExitStatus exitStatus) {
+               [this, job, tempFiles](QProcess *process, int exitCode, QProcess::ExitStatus exitStatus) {
+                   for (const QString &temp : *tempFiles) {
+                       QFile::remove(temp);
+                   }
                    const bool success = (exitStatus == QProcess::NormalExit) && (exitCode == 0 || exitCode == 3) &&
                                         QFileInfo::exists(job->outputPath());
                    const QString error = success ? QString() : QString::fromUtf8(process->readAllStandardError());

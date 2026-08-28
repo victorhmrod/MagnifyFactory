@@ -3,6 +3,7 @@
 #include <QHash>
 #include <QProcess>
 #include <functional>
+#include <memory>
 
 #include "engines/IMediaEngine.h"
 
@@ -13,8 +14,10 @@ namespace magnify::engines::pdf {
 // PdfImageWriter (with FFmpeg used only to pre-convert non-JPEG sources),
 // since Poppler has no PDF-writing tool. PDF -> PDF is a qpdf pass whose
 // exact behavior is chosen by job->parameters()["operation"]: "merge"
-// (job->inputPath() + extraInputPaths(), all pages, concatenated),
-// "split" (one output file per page), or the default, compress.
+// (job->inputPath() + extraInputPaths(), all pages, concatenated — image
+// inputs are transparently turned into single-page PDFs first, so a merge
+// can freely mix PDFs and images into one output), "split" (one output
+// file per page), or the default, compress.
 class PdfEngine : public magnify::engines::IMediaEngine {
     Q_OBJECT
 public:
@@ -31,6 +34,13 @@ private:
     void convertImageToPdf(magnify::core::ConversionJob *job);
     void compressPdf(magnify::core::ConversionJob *job);
     void mergePdf(magnify::core::ConversionJob *job);
+    // Recursively turns each non-PDF entry of *inputs into a temp
+    // single-page PDF (in place) before handing off to runMergeQpdf();
+    // pure-PDF merges walk straight through with nothing to convert.
+    void convertNextMergeInput(magnify::core::ConversionJob *job, std::shared_ptr<QStringList> inputs, int index,
+                                std::shared_ptr<QStringList> tempFiles);
+    void runMergeQpdf(magnify::core::ConversionJob *job, std::shared_ptr<QStringList> inputs,
+                       std::shared_ptr<QStringList> tempFiles);
     void splitPdf(magnify::core::ConversionJob *job);
     void finishJob(magnify::core::ConversionJob *job, bool success, const QString &errorMessage);
 

@@ -71,8 +71,9 @@ can be added without touching existing code.
   `.srt` file, from a TOOLS entry in the format popup.
 - **PDF ↔ image**: render a PDF's first page to PNG/JPEG (Poppler), or embed
   an image losslessly into a single-page PDF.
-- **PDF tools**: compress (recompress embedded images/streams), merge several
-  PDFs into one, split one into a file per page — all via `qpdf`.
+- **PDF tools**: compress (recompress embedded images/streams), merge PDFs
+  *and images* (any mix — each image becomes a page) into one PDF, split one
+  into a file per page — all via `qpdf`.
 - **`magnify` CLI** — the same job system and engines as the GUI, scriptable
   from a terminal (see [Command-line interface](#command-line-interface)).
 - **Watch folders** — point at a folder and a target format; anything
