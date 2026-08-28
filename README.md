@@ -209,6 +209,18 @@ cmake --build build --target MagnifyFactory
 No vcpkg needed — the distro's Qt6 packages are used directly. The binary
 lands at `build/MagnifyFactory`.
 
+**Building the AppImage**
+
+```bash
+./scripts/build_appimage.sh
+```
+
+Builds a Release config, bundles Qt via [linuxdeploy](https://github.com/linuxdeploy/linuxdeploy)
+(downloaded automatically on first run), and packages it. The output lands
+at `dist/MagnifyFactory-<version>-x86_64.AppImage`. External tools
+(ffmpeg, qpdf, ...) are not bundled — same policy as the Windows
+installer, see the dependency list above.
+
 ### Run the tests
 
 ```bash

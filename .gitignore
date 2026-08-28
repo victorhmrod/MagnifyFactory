@@ -4,6 +4,8 @@ build-*/
 out/
 dist/
 installer_test/
+AppDir/
+*.AppImage
 
 # CMake
 CMakeCache.txt
