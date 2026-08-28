@@ -85,6 +85,49 @@ int main(int argc, char *argv[]) {
     remux.waitForFinished(30000);
     allOk &= runOneConversion(manager, dir + "/sample.mkv", dir + "/out_from_mkv.mp4", "mp4");
 
+    // Video -> single still image: needs -frames:v 1 or ffmpeg's image2
+    // muxer rejects a multi-frame source outright ("does not contain an
+    // image sequence pattern"). Verified via ffprobe, not just that a file
+    // exists.
+    {
+        auto job = std::make_unique<ConversionJob>(sourceMp4, dir + "/out_from_mp4.png");
+        job->setSourceFormat("mp4");
+        job->setTargetFormat("png");
+        job->setEngineName("FFmpeg");
+        ConversionJob *raw = manager.addJob(std::move(job));
+
+        QEventLoop loop;
+        bool finished = false, ok = false;
+        QObject::connect(raw, &ConversionJob::statusChanged, &loop, [&](JobStatus status) {
+            if (status == JobStatus::Completed || status == JobStatus::Failed || status == JobStatus::Cancelled) {
+                finished = true;
+                ok = (status == JobStatus::Completed);
+                loop.quit();
+            }
+        });
+        QTimer::singleShot(30000, &loop, &QEventLoop::quit);
+        manager.startQueue();
+        loop.exec();
+
+        if (!finished || !ok) {
+            qWarning() << "FAILED converting" << sourceMp4 << "-> single PNG:" << raw->errorMessage();
+            allOk = false;
+        } else {
+            QProcess probe;
+            probe.start("ffprobe", {"-v", "error", "-select_streams", "v:0", "-show_entries",
+                                     "stream=codec_name,width,height", "-of", "csv=p=0", dir + "/out_from_mp4.png"});
+            probe.waitForFinished(10000);
+            const QStringList fields = QString::fromUtf8(probe.readAllStandardOutput()).trimmed().split(',');
+            // codec_name,width,height, matching the -show_entries order above
+            if (fields.size() != 3 || fields[0] != "png" || fields[1].toInt() <= 0 || fields[2].toInt() <= 0) {
+                qWarning() << "FAILED: video->png produced unexpected ffprobe output:" << fields;
+                allOk = false;
+            } else {
+                qInfo() << "OK: video -> single PNG frame (" << fields.join(',') << ")";
+            }
+        }
+    }
+
     qInfo() << (allOk ? "ALL CONVERSIONS SUCCEEDED" : "SOME CONVERSIONS FAILED");
     return allOk ? 0 : 1;
 }

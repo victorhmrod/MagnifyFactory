@@ -127,6 +127,14 @@ QStringList FFmpegMediaEngine::buildArgsForJob(ConversionJob *job, const MediaPr
         // Still-image conversion (PNG/JPEG/WebP/AVIF/BMP/TIFF/GIF/...). FFmpeg
         // selects an appropriate encoder from the output extension by default;
         // we only need to steer quality for the lossy formats users care about.
+        const FormatCategory sourceCategory = FormatRegistry::instance().categoryOf(job->sourceFormat().toLower());
+        if (sourceCategory == FormatCategory::Video) {
+            // A video source has many frames; without this the image2 muxer
+            // rejects the output ("does not contain an image sequence
+            // pattern") instead of just writing a single still. Grabs the
+            // first frame.
+            builder.addExtraArgs({QStringLiteral("-frames:v"), QStringLiteral("1")});
+        }
         if (targetExt == QStringLiteral("jpg") || targetExt == QStringLiteral("jpeg")) {
             builder.addExtraArgs({QStringLiteral("-q:v"),
                                    QString::number(params.value(QStringLiteral("jpegQuality"), 2).toInt())});
