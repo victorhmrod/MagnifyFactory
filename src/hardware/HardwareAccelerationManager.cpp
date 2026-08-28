@@ -6,6 +6,8 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
+#include "core/HostProcess.h"
+
 namespace magnify::hardware {
 
 QString hardwareVendorToString(HardwareVendor vendor) {
@@ -55,11 +57,12 @@ bool HardwareAccelerationManager::verifyEncoder(const QString &encoderName) cons
     const QString outputPath = tempDir.filePath(QStringLiteral("probe.mp4"));
 
     QProcess process;
-    process.start(QStringLiteral("ffmpeg"),
-                   {QStringLiteral("-y"), QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"),
-                    QStringLiteral("error"), QStringLiteral("-f"), QStringLiteral("lavfi"), QStringLiteral("-i"),
-                    QStringLiteral("testsrc=duration=1:size=320x240:rate=5"), QStringLiteral("-frames:v"),
-                    QStringLiteral("1"), QStringLiteral("-c:v"), encoderName, outputPath});
+    magnify::core::HostProcess::start(
+        &process, QStringLiteral("ffmpeg"),
+        {QStringLiteral("-y"), QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
+         QStringLiteral("-f"), QStringLiteral("lavfi"), QStringLiteral("-i"),
+         QStringLiteral("testsrc=duration=1:size=320x240:rate=5"), QStringLiteral("-frames:v"), QStringLiteral("1"),
+         QStringLiteral("-c:v"), encoderName, outputPath});
     if (!process.waitForStarted(3000)) {
         return false;
     }

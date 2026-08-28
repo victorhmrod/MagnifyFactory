@@ -4,6 +4,7 @@
 #include <QFileInfo>
 
 #include "core/ConversionJob.h"
+#include "core/HostProcess.h"
 
 using magnify::core::ConversionJob;
 using magnify::core::JobStatus;
@@ -88,7 +89,7 @@ void ArchiveEngine::runProcess(ConversionJob *job, const QString &program, const
         process->deleteLater();
     });
 
-    process->start(program, args);
+    magnify::core::HostProcess::start(process, program, args);
 }
 
 void ArchiveEngine::finishJob(ConversionJob *job, bool success, const QString &errorMessage) {

@@ -6,6 +6,8 @@
 #include <QJsonObject>
 #include <QProcess>
 
+#include "core/HostProcess.h"
+
 namespace magnify::engines::ffmpeg {
 
 MediaProbeResult FFprobe::probe(const QString &filePath) {
@@ -26,7 +28,7 @@ MediaProbeResult FFprobe::probe(const QString &filePath) {
         QStringLiteral("-show_streams"),
         filePath,
     };
-    process.start(QStringLiteral("ffprobe"), args);
+    magnify::core::HostProcess::start(&process, QStringLiteral("ffprobe"), args);
     if (!process.waitForStarted(5000)) {
         result.errorMessage = QStringLiteral("Could not start ffprobe. Is FFmpeg installed and on PATH?");
         return result;

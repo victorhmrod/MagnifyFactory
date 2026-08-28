@@ -117,7 +117,8 @@ run it. It's a per-user install (no admin rights needed) with an optional
 checkbox to add *Convert with MagnifyFactory* to the Explorer right-click
 menu, and it registers an uninstaller.
 
-**Linux**: no packaged build yet — see
+**Linux**: no prebuilt package yet — build a `.AppImage` or install a
+[Flatpak](flatpak/org.magnifyfactory.MagnifyFactory.yml) locally, see
 [Building from source](#building-from-source) below.
 
 MagnifyFactory's installer is not code-signed yet. Microsoft Defender
@@ -220,6 +221,24 @@ Builds a Release config, bundles Qt via [linuxdeploy](https://github.com/linuxde
 at `dist/MagnifyFactory-<version>-x86_64.AppImage`. External tools
 (ffmpeg, qpdf, ...) are not bundled — same policy as the Windows
 installer, see the dependency list above.
+
+**Building the Flatpak**
+
+```bash
+./scripts/build_flatpak.sh
+```
+
+Builds from [flatpak/org.magnifyfactory.MagnifyFactory.yml](flatpak/org.magnifyfactory.MagnifyFactory.yml)
+against the `org.kde.Platform` runtime (installed from Flathub
+automatically if missing) and installs it locally. Run with
+`flatpak run org.magnifyfactory.MagnifyFactory`.
+
+A Flatpak sandbox can't exec host binaries directly, so external tools are
+invoked through the `org.freedesktop.Flatpak` portal (`flatpak-spawn
+--host`) instead — see [`src/core/HostProcess.h`](src/core/HostProcess.h).
+This needs those tools on the *host's* `PATH`, same dependency list as
+above; the manifest requests `--filesystem=host` so MagnifyFactory can also
+read/write your files anywhere (not just inside the sandbox).
 
 ### Run the tests
 

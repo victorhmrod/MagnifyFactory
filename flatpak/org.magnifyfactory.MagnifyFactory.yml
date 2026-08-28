@@ -1,0 +1,34 @@
+app-id: org.magnifyfactory.MagnifyFactory
+runtime: org.kde.Platform
+runtime-version: '6.9'
+sdk: org.kde.Sdk
+command: MagnifyFactory
+
+finish-args:
+  # Display (Wayland natively, X11/XWayland fallback for desktops without
+  # Wayland support).
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # MagnifyFactory converts arbitrary files the user picks from anywhere,
+  # and writes output beside the source — broad filesystem access is the
+  # actual feature, not an oversight.
+  - --filesystem=host
+
+  # Required for flatpak-spawn --host: MagnifyFactory shells out to
+  # ffmpeg/qpdf/7z/pdftoppm/soffice rather than bundling them (same policy
+  # as the Windows/AppImage builds), and a sandboxed process can't exec
+  # host binaries directly — only the portal this permission talks to can.
+  # See src/core/HostProcess.h.
+  - --talk-name=org.freedesktop.Flatpak
+
+modules:
+  - name: magnifyfactory
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: dir
+        path: ..

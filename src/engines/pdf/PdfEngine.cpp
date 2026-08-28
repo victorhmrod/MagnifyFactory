@@ -10,6 +10,7 @@
 
 #include "PdfImageWriter.h"
 #include "core/ConversionJob.h"
+#include "core/HostProcess.h"
 
 using magnify::core::ConversionJob;
 using magnify::core::JobStatus;
@@ -77,7 +78,7 @@ void PdfEngine::runProcess(ConversionJob *job, const QString &program, const QSt
         process->deleteLater();
     });
 
-    process->start(program, args);
+    magnify::core::HostProcess::start(process, program, args);
 }
 
 void PdfEngine::convertPdfToImage(ConversionJob *job) {
@@ -128,7 +129,7 @@ void PdfEngine::convertImageToPdf(ConversionJob *job) {
     // Non-JPEG source (PNG/WebP/BMP/...): re-encode to a temp JPEG with
     // FFmpeg first, since PdfImageWriter only embeds JPEG (DCTDecode).
     auto *tempFile = new QTemporaryFile(
-        QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation)).filePath("magnify_XXXXXX.jpg"), this);
+        QDir(magnify::core::HostProcess::sharedTempDir()).filePath("magnify_XXXXXX.jpg"), this);
     tempFile->setAutoRemove(false);
     if (!tempFile->open()) {
         finishJob(job, false, QStringLiteral("Could not create a temporary file for image conversion."));
@@ -168,7 +169,7 @@ namespace {
 bool qpdfSupportsJpegQuality() {
     static const bool supported = [] {
         QProcess probe;
-        probe.start(QStringLiteral("qpdf"), {QStringLiteral("--help=--jpeg-quality")});
+        magnify::core::HostProcess::start(&probe, QStringLiteral("qpdf"), {QStringLiteral("--help=--jpeg-quality")});
         probe.waitForFinished(5000);
         return probe.exitCode() == 0;
     }();
@@ -222,7 +223,7 @@ void PdfEngine::convertNextMergeInput(ConversionJob *job, std::shared_ptr<QStrin
     // re-encoded to JPEG via ffmpeg first), then substitute it in place and
     // move on to the next input.
     const QString tempPdfPath =
-        QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+        QDir(magnify::core::HostProcess::sharedTempDir())
             .filePath(QStringLiteral("magnify_merge_%1.pdf").arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
 
     auto embedAndContinue = [this, job, inputs, index, tempFiles, tempPdfPath](const QString &jpegPath) {
@@ -245,7 +246,7 @@ void PdfEngine::convertNextMergeInput(ConversionJob *job, std::shared_ptr<QStrin
     }
 
     auto *tempFile = new QTemporaryFile(
-        QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation)).filePath("magnify_XXXXXX.jpg"), this);
+        QDir(magnify::core::HostProcess::sharedTempDir()).filePath("magnify_XXXXXX.jpg"), this);
     tempFile->setAutoRemove(false);
     if (!tempFile->open()) {
         finishJob(job, false, QStringLiteral("Could not create a temporary file for image conversion."));

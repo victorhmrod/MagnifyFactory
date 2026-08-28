@@ -3,6 +3,7 @@
 #include "FFmpegCommandBuilder.h"
 #include "FFprobe.h"
 #include "core/FormatRegistry.h"
+#include "core/HostProcess.h"
 #include "hardware/HardwareAccelerationManager.h"
 
 #include <QFileInfo>
@@ -249,7 +250,7 @@ void FFmpegMediaEngine::startConversion(ConversionJob *job) {
     });
 
     job->setStatus(JobStatus::Running);
-    process->start(QStringLiteral("ffmpeg"), args);
+    magnify::core::HostProcess::start(process, QStringLiteral("ffmpeg"), args);
 }
 
 void FFmpegMediaEngine::handleProgressData(const QUuid &jobId) {

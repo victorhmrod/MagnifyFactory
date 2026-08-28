@@ -17,6 +17,7 @@ set(MAGNIFY_CORE_SOURCES
     src/core/JobManager.cpp
     src/core/FormatRegistry.h
     src/core/FormatRegistry.cpp
+    src/core/HostProcess.h
 )
 
 set(MAGNIFY_HARDWARE_SOURCES
@@ -80,7 +81,7 @@ target_link_libraries(magnify_core PUBLIC Qt6::Widgets)
 
 add_library(magnify_hardware STATIC ${MAGNIFY_HARDWARE_SOURCES})
 target_include_directories(magnify_hardware PUBLIC src)
-target_link_libraries(magnify_hardware PUBLIC Qt6::Widgets)
+target_link_libraries(magnify_hardware PUBLIC Qt6::Widgets magnify_core)
 
 add_library(magnify_presets STATIC ${MAGNIFY_PRESETS_SOURCES})
 target_include_directories(magnify_presets PUBLIC src)
@@ -166,6 +167,21 @@ set_target_properties(magnify_plugin_sample PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins"
 )
+
+# `cmake --install` support — not used by the plain dev/Windows-installer/
+# AppImage workflows (all of which run straight out of build/), but needed
+# for flatpak-builder's cmake-ninja buildsystem, which installs into the
+# Flatpak sandbox's /app prefix. The .desktop/icon install (which follow
+# the Flatpak app-id naming convention) only make sense on Linux.
+include(GNUInstallDirs)
+install(TARGETS MagnifyFactory magnify RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+if(UNIX AND NOT APPLE)
+    install(FILES flatpak/org.magnifyfactory.MagnifyFactory.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(FILES resources/icon.png
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
+        RENAME org.magnifyfactory.MagnifyFactory.png)
+endif()
 
 enable_testing()
 add_subdirectory(tests)

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=MagnifyFactory
+Comment=Convert video, audio, images, PDFs, documents, and archives
+Exec=MagnifyFactory %f
+Icon=org.magnifyfactory.MagnifyFactory
+Terminal=false
+Categories=AudioVideo;

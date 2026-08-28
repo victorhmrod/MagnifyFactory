@@ -7,6 +7,7 @@
 #include <QStandardPaths>
 
 #include "core/ConversionJob.h"
+#include "core/HostProcess.h"
 
 using magnify::core::ConversionJob;
 using magnify::core::JobStatus;
@@ -17,6 +18,16 @@ DocumentEngine::DocumentEngine(QObject *parent) : IMediaEngine(parent) {
 }
 
 QString DocumentEngine::sofficeExecutable() {
+    // Inside a Flatpak sandbox, PATH/filesystem lookups below only see the
+    // sandbox, not the host — LibreOffice living on the host would always
+    // look "missing" even when it's genuinely installed. flatpak-spawn
+    // --host resolves a bare command against the host's own PATH, so just
+    // hand it "soffice" directly and let that (or the errorOccurred handler
+    // in startConversion, if it's really not installed) sort it out.
+    if (magnify::core::HostProcess::isSandboxed()) {
+        return QStringLiteral("soffice");
+    }
+
     const QString onPath = QStandardPaths::findExecutable(QStringLiteral("soffice"));
     if (!onPath.isEmpty()) {
         return onPath;
@@ -84,8 +95,9 @@ void DocumentEngine::startConversion(ConversionJob *job) {
     // LibreOffice needs its own isolated user profile directory per
     // concurrent instance, or parallel jobs corrupt each other's lock files.
     // Give each job a private one under the temp dir.
-    const QString profileDir = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
-                                    .filePath(QStringLiteral("magnify_soffice_profile_%1").arg(job->id().toString(QUuid::WithoutBraces)));
+    const QString profileDir =
+        QDir(magnify::core::HostProcess::sharedTempDir())
+            .filePath(QStringLiteral("magnify_soffice_profile_%1").arg(job->id().toString(QUuid::WithoutBraces)));
     const QString userInstallArg =
         QStringLiteral("-env:UserInstallation=file:///%1").arg(QDir::fromNativeSeparators(profileDir));
 
@@ -130,7 +142,7 @@ void DocumentEngine::startConversion(ConversionJob *job) {
         }
     });
 
-    process->start(soffice, args);
+    magnify::core::HostProcess::start(process, soffice, args);
 }
 
 void DocumentEngine::finishJob(ConversionJob *job, bool success, const QString &errorMessage) {

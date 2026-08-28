@@ -6,6 +6,9 @@ dist/
 installer_test/
 AppDir/
 *.AppImage
+flatpak-build/
+flatpak-repo/
+.flatpak-builder/
 
 # CMake
 CMakeCache.txt
