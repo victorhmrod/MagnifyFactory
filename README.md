@@ -257,6 +257,18 @@ rights needed — only touches `HKEY_CURRENT_USER`):
 ./scripts/unregister_context_menu.ps1
 ```
 
+## Linux context menu integration
+
+Per-user (installs under `~/.local/share`, no root needed): a `.desktop`
+launcher so MagnifyFactory shows up under **Open With** on any file manager,
+plus a direct **Convert with MagnifyFactory** entry for GNOME Files
+(Nautilus, via its Scripts menu) and KDE Dolphin (via a service menu).
+
+```bash
+./scripts/register_context_menu.sh      # defaults to ../build/MagnifyFactory
+./scripts/unregister_context_menu.sh
+```
+
 ## Command-line interface
 
 `magnify` (`build/magnify.exe`) drives the exact same `JobManager` and
