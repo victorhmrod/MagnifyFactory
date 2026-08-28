@@ -64,3 +64,27 @@ jobs:
       - name: Run unit tests
         shell: pwsh
         run: ctest --test-dir build --output-on-failure
+
+  build-and-test-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Distro Qt6 packages are prebuilt, so this is a normal apt install —
+      # no vcpkg/from-source build (and no cache) needed on this platform.
+      - name: Install build tools and Qt6
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends
+          build-essential cmake ninja-build qt6-base-dev
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+
+      # Same rationale as the Windows job: build everything so a new ctest
+      # target can never be silently skipped.
+      - name: Build
+        run: cmake --build build
+
+      - name: Run unit tests
+        run: ctest --test-dir build --output-on-failure

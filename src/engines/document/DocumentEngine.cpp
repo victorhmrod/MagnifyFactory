@@ -21,10 +21,27 @@ QString DocumentEngine::sofficeExecutable() {
     if (!onPath.isEmpty()) {
         return onPath;
     }
+    // findExecutable() already covers the common case everywhere (soffice
+    // on PATH, which is how LibreOffice installs on Linux via a package
+    // manager); these are just fallbacks for installers that don't put it
+    // on PATH, so only the ones for the current OS are worth checking.
+#if defined(Q_OS_WIN)
     const QStringList candidates{
         QStringLiteral("C:/Program Files/LibreOffice/program/soffice.exe"),
         QStringLiteral("C:/Program Files (x86)/LibreOffice/program/soffice.exe"),
     };
+#elif defined(Q_OS_MACOS)
+    const QStringList candidates{
+        QStringLiteral("/Applications/LibreOffice.app/Contents/MacOS/soffice"),
+    };
+#else
+    const QStringList candidates{
+        QStringLiteral("/usr/bin/soffice"),
+        QStringLiteral("/usr/lib/libreoffice/program/soffice"),
+        QStringLiteral("/opt/libreoffice/program/soffice"),
+        QStringLiteral("/snap/bin/libreoffice.soffice"),
+    };
+#endif
     for (const QString &candidate : candidates) {
         if (QFileInfo::exists(candidate)) {
             return candidate;

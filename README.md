@@ -5,13 +5,13 @@
 <h1 align="center">MagnifyFactory</h1>
 
 <p align="center">
-  A fast, native, modular file conversion desktop app for Windows.<br>
+  A fast, native, modular file conversion desktop app for Windows and Linux.<br>
   Video, audio, images, PDF, documents, and archives — all in one place.
 </p>
 
 <p align="center">
   <a href="https://github.com/victorhmrod/MagnifyFactory/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/victorhmrod/MagnifyFactory/actions/workflows/ci.yml/badge.svg"></a>
-  <img alt="platform" src="https://img.shields.io/badge/platform-Windows-0078D6">
+  <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-0078D6">
   <img alt="language" src="https://img.shields.io/badge/language-C%2B%2B20-blue">
   <img alt="UI" src="https://img.shields.io/badge/UI-Qt6-41CD52">
   <img alt="license" src="https://img.shields.io/badge/license-GPL--3.0-blue">
@@ -111,11 +111,14 @@ can be added without touching existing code.
 
 ## Installing
 
-Grab the latest `MagnifyFactory-Setup-<version>.exe` from the
+**Windows**: grab the latest `MagnifyFactory-Setup-<version>.exe` from the
 [Releases](https://github.com/victorhmrod/MagnifyFactory/releases) page and
 run it. It's a per-user install (no admin rights needed) with an optional
 checkbox to add *Convert with MagnifyFactory* to the Explorer right-click
 menu, and it registers an uninstaller.
+
+**Linux**: no packaged build yet — see
+[Building from source](#building-from-source) below.
 
 MagnifyFactory's installer is not code-signed yet. Microsoft Defender
 SmartScreen may show a "Windows protected your PC" warning with "Unknown
@@ -134,8 +137,16 @@ make sure these are on your `PATH`:
 
 ## Building from source
 
-### Prerequisites
+The core app, engines, CLI, and test suite are plain Qt6/C++20 with no
+Windows-only code — the same source tree builds and runs on Linux too (built
+and verified on Ubuntu 24.04). The installer, code-signing, and Explorer
+context-menu integration below are Windows-specific; Linux users run the
+build straight out of `build/` or package it themselves (a `.desktop` file
+is enough for most file managers' "Open With").
 
+### Windows
+
+**Prerequisites**
 - Windows 10/11
 - [Visual Studio 2022+](https://visualstudio.microsoft.com/) with the
   "Desktop development with C++" workload
@@ -150,7 +161,7 @@ make sure these are on your `PATH`:
 - [LibreOffice](https://www.libreoffice.org/) (`soffice` on your `PATH`, or
   installed at its default location) for document conversion
 
-### Get Qt6
+**Get Qt6**
 
 ```bash
 git clone https://github.com/microsoft/vcpkg.git
@@ -158,7 +169,7 @@ git clone https://github.com/microsoft/vcpkg.git
 ./vcpkg/vcpkg.exe install "qtbase[widgets]:x64-windows"
 ```
 
-### Configure and build
+**Configure and build**
 
 From a **Developer PowerShell for VS** (so `cl.exe` is on `PATH`):
 
@@ -173,9 +184,34 @@ cmake --build build --target MagnifyFactory
 
 The binary lands at `build/MagnifyFactory.exe`.
 
+### Linux
+
+**Prerequisites** (Debian/Ubuntu package names — adjust for your distro)
+
+```bash
+sudo apt install build-essential cmake ninja-build qt6-base-dev \
+    ffmpeg poppler-utils qpdf p7zip-full
+```
+
+`libreoffice` (for document conversion) is optional and sizable; install it
+the same way if you need that engine. Note: distros that still ship qpdf
+< 12 (e.g. Ubuntu 24.04's 11.9.0) don't support `--jpeg-quality`, so PDF
+compress falls back to qpdf's default image optimization automatically —
+still real compression, just without a quality dial.
+
+**Configure and build**
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --target MagnifyFactory
+```
+
+No vcpkg needed — the distro's Qt6 packages are used directly. The binary
+lands at `build/MagnifyFactory`.
+
 ### Run the tests
 
-```powershell
+```bash
 cd build
 ctest --output-on-failure
 ```

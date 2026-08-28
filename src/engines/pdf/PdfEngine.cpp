@@ -159,16 +159,31 @@ void PdfEngine::convertImageToPdf(ConversionJob *job) {
                });
 }
 
+namespace {
+// --jpeg-quality was added in qpdf 12.x; Linux distros commonly still ship
+// an 11.x qpdf (e.g. Ubuntu 24.04's packaged 11.9.0), which rejects it
+// outright as an unrecognized argument. Probed once and cached rather than
+// hardcoding a version check, since that's what actually determines
+// whether the flag works.
+bool qpdfSupportsJpegQuality() {
+    static const bool supported = [] {
+        QProcess probe;
+        probe.start(QStringLiteral("qpdf"), {QStringLiteral("--help=--jpeg-quality")});
+        probe.waitForFinished(5000);
+        return probe.exitCode() == 0;
+    }();
+    return supported;
+}
+} // namespace
+
 void PdfEngine::compressPdf(ConversionJob *job) {
     const int jpegQuality = job->parameters().value(QStringLiteral("jpegQuality"), 60).toInt();
-    const QStringList args{
-        QStringLiteral("--optimize-images"),
-        QStringLiteral("--jpeg-quality=%1").arg(jpegQuality),
-        QStringLiteral("--compress-streams=y"),
-        QStringLiteral("--object-streams=generate"),
-        job->inputPath(),
-        job->outputPath(),
-    };
+    QStringList args{QStringLiteral("--optimize-images")};
+    if (qpdfSupportsJpegQuality()) {
+        args << QStringLiteral("--jpeg-quality=%1").arg(jpegQuality);
+    }
+    args << QStringLiteral("--compress-streams=y") << QStringLiteral("--object-streams=generate")
+         << job->inputPath() << job->outputPath();
 
     runProcess(job, QStringLiteral("qpdf"), args,
                [this, job](QProcess *process, int exitCode, QProcess::ExitStatus exitStatus) {

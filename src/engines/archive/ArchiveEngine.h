@@ -2,6 +2,7 @@
 
 #include <QHash>
 #include <QProcess>
+#include <functional>
 
 #include "engines/IMediaEngine.h"
 
@@ -28,6 +29,10 @@ private:
     void extractArchive(magnify::core::ConversionJob *job);
     void createArchive(magnify::core::ConversionJob *job);
     void finishJob(magnify::core::ConversionJob *job, bool success, const QString &errorMessage);
+
+    using ProcessFinishedHandler = std::function<void(QProcess *process, int exitCode, QProcess::ExitStatus status)>;
+    void runProcess(magnify::core::ConversionJob *job, const QString &program, const QStringList &args,
+                     ProcessFinishedHandler onFinished);
 
     QHash<QUuid, QProcess *> m_runningProcesses;
 };
