@@ -29,6 +29,11 @@ public:
     void startConversion(magnify::core::ConversionJob *job) override;
     void cancelConversion(const QUuid &jobId) override;
 
+    // Synchronous (`qpdf --show-npages`); used by the Document Editor UI to
+    // size its page grid before any thumbnails are rendered. Returns -1 on
+    // failure (missing/invalid file, qpdf not installed).
+    static int pageCount(const QString &filePath);
+
 private:
     void convertPdfToImage(magnify::core::ConversionJob *job);
     void convertImageToPdf(magnify::core::ConversionJob *job);
@@ -42,6 +47,14 @@ private:
     void runMergeQpdf(magnify::core::ConversionJob *job, std::shared_ptr<QStringList> inputs,
                        std::shared_ptr<QStringList> tempFiles);
     void splitPdf(magnify::core::ConversionJob *job);
+    // Rebuilds a PDF from job->parameters()["pages"] (a per-output-page list
+    // of {"source": 0=inputPath()/1+=extraInputPaths()[source-1], "page":
+    // 1-based page number in that source}), then applies
+    // job->parameters()["rotations"] (final 1-based page number -> absolute
+    // angle 90/180/270) as a second qpdf pass. Lets the Document Editor
+    // reorder, delete, duplicate, insert pages from other PDFs, and rotate
+    // pages, all via real qpdf processing on export.
+    void documentEditPdf(magnify::core::ConversionJob *job);
     void finishJob(magnify::core::ConversionJob *job, bool success, const QString &errorMessage);
 
     // Shared process bookkeeping (registering in m_runningProcesses so

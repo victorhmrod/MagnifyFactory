@@ -27,6 +27,7 @@
 #include <QtConcurrentRun>
 
 #include "ConvertDialog.h"
+#include "DocumentEditorDialog.h"
 #include "ImageEditorDialog.h"
 #include "PresetManagerDialog.h"
 #include "VideoEditorDialog.h"
@@ -258,6 +259,16 @@ void MainWindow::buildUi() {
     });
     controlsRow->addWidget(imageEditorButton);
 
+    auto *documentEditorButton = new QPushButton(QStringLiteral("Document Editor..."), content);
+    connect(documentEditorButton, &QPushButton::clicked, this, [this]() {
+        const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Select a PDF to edit"), QString(),
+                                                            QStringLiteral("PDF files (*.pdf)"));
+        if (!path.isEmpty()) {
+            openDocumentEditorDialog(path);
+        }
+    });
+    controlsRow->addWidget(documentEditorButton);
+
     controlsRow->addStretch(1);
     contentLayout->addLayout(controlsRow);
 
@@ -299,6 +310,11 @@ void MainWindow::openVideoEditorDialog() {
 
 void MainWindow::openImageEditorDialog(const QString &filePath) {
     ImageEditorDialog dialog(filePath, m_jobManager.get(), this);
+    dialog.exec();
+}
+
+void MainWindow::openDocumentEditorDialog(const QString &filePath) {
+    DocumentEditorDialog dialog(filePath, m_jobManager.get(), this);
     dialog.exec();
 }
 

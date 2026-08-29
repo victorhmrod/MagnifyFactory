@@ -59,6 +59,7 @@ private:
     void addRotateTool(QVBoxLayout *layout, const QString &filePath);
     void addSubtitleExtractTool(QVBoxLayout *layout);
     void addImageEditTool(QVBoxLayout *layout, const QString &filePath);
+    void addDocumentEditTool(QVBoxLayout *layout, const QString &filePath);
 
     // Loads m_originalPixmap for the preview pane (Image: read directly;
     // PDF: render page 1 via pdftoppm), synchronously — this only runs once,

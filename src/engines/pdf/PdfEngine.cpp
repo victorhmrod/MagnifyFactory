@@ -43,6 +43,8 @@ void PdfEngine::startConversion(ConversionJob *job) {
         mergePdf(job);
     } else if (sourceExt == QStringLiteral("pdf") && operation == QStringLiteral("split")) {
         splitPdf(job);
+    } else if (sourceExt == QStringLiteral("pdf") && operation == QStringLiteral("documentEdit")) {
+        documentEditPdf(job);
     } else if (sourceExt == QStringLiteral("pdf") && targetExt == QStringLiteral("pdf")) {
         compressPdf(job);
     } else if (sourceExt == QStringLiteral("pdf")) {
@@ -310,6 +312,80 @@ void PdfEngine::splitPdf(ConversionJob *job) {
                });
 }
 
+void PdfEngine::documentEditPdf(ConversionJob *job) {
+    QStringList sources{job->inputPath()};
+    sources << job->extraInputPaths();
+
+    const QVariantList pages = job->parameters().value(QStringLiteral("pages")).toList();
+    if (pages.isEmpty()) {
+        finishJob(job, false, QStringLiteral("No pages selected for the edited document."));
+        return;
+    }
+
+    // Each output page is its own "<file> <page>" pair in --pages, so
+    // reordering, deleting, duplicating, and inserting pages from other
+    // PDFs are all just a matter of which pairs are listed and in what
+    // order — no special-casing needed for any of those operations.
+    QStringList pagesArgs;
+    for (const QVariant &entry : pages) {
+        const QVariantMap page = entry.toMap();
+        const int sourceIndex = page.value(QStringLiteral("source"), 0).toInt();
+        const int pageNumber = page.value(QStringLiteral("page"), 1).toInt();
+        if (sourceIndex < 0 || sourceIndex >= sources.size()) {
+            finishJob(job, false, QStringLiteral("Invalid source index %1 in document edit.").arg(sourceIndex));
+            return;
+        }
+        pagesArgs << sources.at(sourceIndex) << QString::number(pageNumber);
+    }
+
+    const QVariantMap rotations = job->parameters().value(QStringLiteral("rotations")).toMap();
+
+    // Rotations are expressed as absolute angles keyed by FINAL (post-
+    // reorder) page number, so they only make sense once the reordered
+    // document already exists — hence the two-pass approach: build the
+    // reordered/filtered document first (to the real output if no rotation
+    // is needed, otherwise to a temp file), then rotate that.
+    const QString pagesOutput = rotations.isEmpty()
+        ? job->outputPath()
+        : QDir(magnify::core::HostProcess::sharedTempDir())
+              .filePath(QStringLiteral("magnify_docedit_%1.pdf").arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
+
+    QStringList buildArgs{QStringLiteral("--empty"), QStringLiteral("--pages")};
+    buildArgs << pagesArgs << QStringLiteral("--") << pagesOutput;
+
+    runProcess(job, QStringLiteral("qpdf"), buildArgs,
+               [this, job, rotations, pagesOutput](QProcess *process, int exitCode, QProcess::ExitStatus exitStatus) {
+                   const bool buildOk = (exitStatus == QProcess::NormalExit) && (exitCode == 0 || exitCode == 3) &&
+                                        QFileInfo::exists(pagesOutput);
+                   if (!buildOk) {
+                       finishJob(job, false, QString::fromUtf8(process->readAllStandardError()));
+                       return;
+                   }
+                   if (rotations.isEmpty()) {
+                       finishJob(job, true, QString());
+                       return;
+                   }
+
+                   QStringList rotateArgs{pagesOutput};
+                   for (auto it = rotations.constBegin(); it != rotations.constEnd(); ++it) {
+                       rotateArgs << QStringLiteral("--rotate=%1:%2").arg(it.value().toInt()).arg(it.key());
+                   }
+                   rotateArgs << QStringLiteral("--") << job->outputPath();
+
+                   runProcess(job, QStringLiteral("qpdf"), rotateArgs,
+                              [this, job, pagesOutput](QProcess *rotateProcess, int rotateExitCode,
+                                                        QProcess::ExitStatus rotateExitStatus) {
+                                  QFile::remove(pagesOutput);
+                                  const bool success = (rotateExitStatus == QProcess::NormalExit) &&
+                                                        (rotateExitCode == 0 || rotateExitCode == 3) &&
+                                                        QFileInfo::exists(job->outputPath());
+                                  const QString error =
+                                      success ? QString() : QString::fromUtf8(rotateProcess->readAllStandardError());
+                                  finishJob(job, success, error);
+                              });
+               });
+}
+
 void PdfEngine::finishJob(ConversionJob *job, bool success, const QString &errorMessage) {
     if (success) {
         job->setProgressPercent(100);
@@ -319,6 +395,18 @@ void PdfEngine::finishJob(ConversionJob *job, bool success, const QString &error
         job->setStatus(JobStatus::Failed);
     }
     emit jobFinished(job->id(), success, errorMessage);
+}
+
+int PdfEngine::pageCount(const QString &filePath) {
+    QProcess probe;
+    magnify::core::HostProcess::start(&probe, QStringLiteral("qpdf"),
+                                       {QStringLiteral("--show-npages"), filePath});
+    if (!probe.waitForFinished(10000) || probe.exitCode() != 0) {
+        return -1;
+    }
+    bool ok = false;
+    const int count = QString::fromUtf8(probe.readAllStandardOutput()).trimmed().toInt(&ok);
+    return ok ? count : -1;
 }
 
 void PdfEngine::cancelConversion(const QUuid &jobId) {

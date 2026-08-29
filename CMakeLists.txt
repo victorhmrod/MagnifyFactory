@@ -79,6 +79,8 @@ set(MAGNIFY_UI_SOURCES
     src/ui/CropLabel.cpp
     src/ui/ImageEditorDialog.h
     src/ui/ImageEditorDialog.cpp
+    src/ui/DocumentEditorDialog.h
+    src/ui/DocumentEditorDialog.cpp
 )
 
 add_library(magnify_core STATIC ${MAGNIFY_CORE_SOURCES})

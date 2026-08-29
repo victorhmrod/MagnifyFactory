@@ -13,6 +13,7 @@
 #include <QUuid>
 #include <QVBoxLayout>
 
+#include "DocumentEditorDialog.h"
 #include "ImageEditorDialog.h"
 #include "TrimDialog.h"
 #include "core/JobManager.h"
@@ -107,6 +108,9 @@ ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCateg
             addCustomSection(layout, QStringLiteral("DOCUMENT"), {{QStringLiteral("PDF"), QStringLiteral("pdf")}});
             break;
         case FormatCategory::Pdf:
+            if (isSingleFile && m_jobManager) {
+                addDocumentEditTool(layout, fileName);
+            }
             // pdftoppm (the renderer behind PDF -> image) only supports these
             // two output formats; the general Image category list includes
             // WebP/AVIF/etc. which it cannot produce.
@@ -413,6 +417,25 @@ void ConvertDialog::addImageEditTool(QVBoxLayout *layout, const QString &filePat
         // The editor enqueues its own job (or the user cancelled) — either
         // way MainWindow shouldn't also enqueue from this dialog's own
         // selectedFormat(), which stays empty.
+        reject();
+    });
+
+    auto *row = new QHBoxLayout();
+    row->addWidget(button);
+    row->addStretch(1);
+    layout->addLayout(row);
+}
+
+void ConvertDialog::addDocumentEditTool(QVBoxLayout *layout, const QString &filePath) {
+    auto *button = new QPushButton(QStringLiteral("Edit Document..."), this);
+    button->setProperty("class", QStringLiteral("formatButton"));
+    button->setCursor(Qt::PointingHandCursor);
+    connect(button, &QPushButton::clicked, this, [this, filePath]() {
+        DocumentEditorDialog editor(filePath, m_jobManager, this);
+        editor.exec();
+        // Same reasoning as addImageEditTool(): the editor enqueues its own
+        // job (or the user cancelled), so this dialog shouldn't also
+        // enqueue from selectedFormat(), which stays empty.
         reject();
     });
 
