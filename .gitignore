@@ -66,3 +66,8 @@ tests/*.mp4
 tests/*.mkv
 tests/*.mpeg
 smoketest/
+
+# Local release-build scratch output (captured MSVC env, build logs)
+_release_build.log
+_vcvars_env.txt
+scripts/_release_build.bat
