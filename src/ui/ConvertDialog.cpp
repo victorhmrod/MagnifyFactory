@@ -13,11 +13,14 @@
 #include <QUuid>
 #include <QVBoxLayout>
 
+#include "ImageEditorDialog.h"
 #include "TrimDialog.h"
+#include "core/JobManager.h"
 #include "presets/PresetRegistry.h"
 
 using magnify::core::FormatCategory;
 using magnify::core::FormatRegistry;
+using magnify::core::JobManager;
 using magnify::presets::Preset;
 using magnify::presets::PresetRegistry;
 
@@ -38,8 +41,8 @@ QLabel *makePreviewSlot(QWidget *parent) {
 } // namespace
 
 ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCategory, QWidget *parent,
-                              bool isSingleFile)
-    : QDialog(parent), m_sourceCategory(sourceCategory) {
+                              bool isSingleFile, JobManager *jobManager)
+    : QDialog(parent), m_sourceCategory(sourceCategory), m_jobManager(jobManager) {
     setWindowTitle(QStringLiteral("Convert"));
     setModal(true);
     setMinimumWidth(460);
@@ -95,6 +98,9 @@ ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCateg
         case FormatCategory::Image:
             if (isSingleFile) {
                 addRotateTool(layout, fileName);
+                if (m_jobManager) {
+                    addImageEditTool(layout, fileName);
+                }
             }
             addPresetSection(layout, FormatCategory::Image);
             addFormatSection(layout, QStringLiteral("IMAGE"), FormatCategory::Image);
@@ -389,6 +395,25 @@ void ConvertDialog::addSubtitleExtractTool(QVBoxLayout *layout) {
         m_selectedFormat = QStringLiteral("srt");
         m_selectedParameters = {{QStringLiteral("operation"), QStringLiteral("extractSubtitles")}};
         accept();
+    });
+
+    auto *row = new QHBoxLayout();
+    row->addWidget(button);
+    row->addStretch(1);
+    layout->addLayout(row);
+}
+
+void ConvertDialog::addImageEditTool(QVBoxLayout *layout, const QString &filePath) {
+    auto *button = new QPushButton(QStringLiteral("Edit Image..."), this);
+    button->setProperty("class", QStringLiteral("formatButton"));
+    button->setCursor(Qt::PointingHandCursor);
+    connect(button, &QPushButton::clicked, this, [this, filePath]() {
+        ImageEditorDialog editor(filePath, m_jobManager, this);
+        editor.exec();
+        // The editor enqueues its own job (or the user cancelled) — either
+        // way MainWindow shouldn't also enqueue from this dialog's own
+        // selectedFormat(), which stays empty.
+        reject();
     });
 
     auto *row = new QHBoxLayout();

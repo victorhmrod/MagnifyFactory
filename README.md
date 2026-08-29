@@ -36,6 +36,19 @@ can be added without touching existing code.
 
 ## Features
 
+- **Video Editor** — click **Video Editor...** (or drop several videos and
+  choose *Open in Video Editor*) to join multiple clips into one: trim each
+  clip independently, then apply brightness/contrast/saturation, a speed
+  multiplier, and a burned-in text overlay to the joined result — one real
+  ffmpeg filter graph, not a fake preview.
+- **Image Editor** — click **Image Editor...**, or *Edit Image...* on a
+  single image in the format popup: drag directly on the image to crop,
+  resize (aspect-locked or free), adjust brightness/contrast/saturation/
+  blur, and add a text overlay — all shown live in an in-app preview, then
+  re-applied for real by ffmpeg on export (crop/scale/eq/gblur/drawtext), so
+  what you get is genuinely processed, not just what the preview
+  approximated. Two pieces of turning MagnifyFactory from a converter into a
+  proper media-editing tool; audio and document editors are next.
 - **Drag-and-drop conversion** — drop a file, pick the target format from a
   popup, done. Drop several at once (or use *Add Folder...*, with an
   optional recursive scan) and it's one popup per file type, not per file.

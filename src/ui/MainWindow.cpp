@@ -27,7 +27,9 @@
 #include <QtConcurrentRun>
 
 #include "ConvertDialog.h"
+#include "ImageEditorDialog.h"
 #include "PresetManagerDialog.h"
+#include "VideoEditorDialog.h"
 #include "WatchFoldersDialog.h"
 #include "core/ConversionJob.h"
 #include "core/FormatRegistry.h"
@@ -243,6 +245,19 @@ void MainWindow::buildUi() {
     connect(presetsButton, &QPushButton::clicked, this, &MainWindow::openPresetManagerDialog);
     controlsRow->addWidget(presetsButton);
 
+    auto *videoEditorButton = new QPushButton(QStringLiteral("Video Editor..."), content);
+    connect(videoEditorButton, &QPushButton::clicked, this, &MainWindow::openVideoEditorDialog);
+    controlsRow->addWidget(videoEditorButton);
+
+    auto *imageEditorButton = new QPushButton(QStringLiteral("Image Editor..."), content);
+    connect(imageEditorButton, &QPushButton::clicked, this, [this]() {
+        const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Select an image to edit"));
+        if (!path.isEmpty()) {
+            openImageEditorDialog(path);
+        }
+    });
+    controlsRow->addWidget(imageEditorButton);
+
     controlsRow->addStretch(1);
     contentLayout->addLayout(controlsRow);
 
@@ -274,6 +289,16 @@ void MainWindow::openWatchFoldersDialog() {
 
 void MainWindow::openPresetManagerDialog() {
     PresetManagerDialog dialog(this);
+    dialog.exec();
+}
+
+void MainWindow::openVideoEditorDialog() {
+    VideoEditorDialog dialog(m_jobManager.get(), this);
+    dialog.exec();
+}
+
+void MainWindow::openImageEditorDialog(const QString &filePath) {
+    ImageEditorDialog dialog(filePath, m_jobManager.get(), this);
     dialog.exec();
 }
 
@@ -418,17 +443,27 @@ void MainWindow::addInputFiles(const QStringList &paths) {
 
         if (files.size() > 1) {
             const bool offerMerge = category == FormatCategory::Pdf || category == FormatCategory::Image;
+            const bool offerVideoEditor = category == FormatCategory::Video;
             QMessageBox box(this);
             box.setWindowTitle(QStringLiteral("MagnifyFactory"));
             box.setText(QStringLiteral("You selected %1 files. What would you like to do?").arg(files.size()));
             QPushButton *mergeButton =
                 offerMerge ? box.addButton(QStringLiteral("Merge into one PDF"), QMessageBox::ActionRole) : nullptr;
+            QPushButton *editButton = offerVideoEditor
+                                           ? box.addButton(QStringLiteral("Open in Video Editor"), QMessageBox::ActionRole)
+                                           : nullptr;
             QPushButton *zipButton = box.addButton(QStringLiteral("Compress into ZIP"), QMessageBox::ActionRole);
             box.addButton(QStringLiteral("Handle Individually"), QMessageBox::RejectRole);
             box.exec();
 
             if (mergeButton && box.clickedButton() == mergeButton) {
                 mergeIntoPdf(files);
+                continue;
+            }
+            if (editButton && box.clickedButton() == editButton) {
+                VideoEditorDialog editorDialog(m_jobManager.get(), this);
+                editorDialog.addClips(files);
+                editorDialog.exec();
                 continue;
             }
             if (box.clickedButton() == zipButton) {
@@ -439,7 +474,7 @@ void MainWindow::addInputFiles(const QStringList &paths) {
 
         const bool isSingleFile = files.size() == 1;
         const QString label = isSingleFile ? files.first() : QStringLiteral("%1 files").arg(files.size());
-        ConvertDialog dialog(label, category, this, isSingleFile);
+        ConvertDialog dialog(label, category, this, isSingleFile, m_jobManager.get());
         if (dialog.exec() == QDialog::Accepted && !dialog.selectedFormat().isEmpty()) {
             for (const QString &file : files) {
                 enqueueFile(file, dialog.selectedFormat(), dialog.selectedParameters());

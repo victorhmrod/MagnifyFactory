@@ -51,3 +51,9 @@ target_link_libraries(smoke_media_edit PRIVATE Qt6::Core magnify_core magnify_ha
 
 add_executable(smoke_custom_preset smoke_custom_preset.cpp)
 target_link_libraries(smoke_custom_preset PRIVATE Qt6::Core magnify_core magnify_hardware magnify_presets magnify_engines)
+
+add_executable(smoke_video_editor smoke_video_editor.cpp)
+target_link_libraries(smoke_video_editor PRIVATE Qt6::Core magnify_core magnify_hardware magnify_engines)
+
+add_executable(smoke_image_editor smoke_image_editor.cpp)
+target_link_libraries(smoke_image_editor PRIVATE Qt6::Core Qt6::Gui magnify_core magnify_hardware magnify_engines)

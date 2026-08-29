@@ -200,6 +200,251 @@ QStringList FFmpegMediaEngine::buildArgsForJob(ConversionJob *job, const MediaPr
     return builder.build();
 }
 
+namespace {
+// Escapes a string for safe use inside an ffmpeg drawtext filter's text=
+// value (single-quoted within the filter graph): backslash and single quote
+// need backslash-escaping, and since the whole filtergraph is itself
+// colon/comma-delimited, those also need escaping so a title containing
+// punctuation doesn't get parsed as extra drawtext options or filter
+// separators.
+QString escapeDrawtext(const QString &text) {
+    QString escaped = text;
+    escaped.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
+    escaped.replace(QStringLiteral("'"), QStringLiteral("\\'"));
+    escaped.replace(QStringLiteral(":"), QStringLiteral("\\:"));
+    escaped.replace(QStringLiteral(","), QStringLiteral("\\,"));
+    return escaped;
+}
+
+// atempo only accepts 0.5-2.0 per instance; anything outside that range
+// needs to be expressed as a chain of instances multiplying to the
+// requested factor. The video editor's UI keeps speed within 0.5x-2.0x
+// (see VideoEditorDialog), so this is a single instance in practice, but
+// the helper is written to degrade sanely if that ever changes.
+QString atempoChain(double speed) {
+    QStringList stages;
+    double remaining = speed;
+    while (remaining > 2.0) {
+        stages << QStringLiteral("atempo=2.0");
+        remaining /= 2.0;
+    }
+    while (remaining < 0.5) {
+        stages << QStringLiteral("atempo=0.5");
+        remaining /= 0.5;
+    }
+    stages << QStringLiteral("atempo=%1").arg(remaining, 0, 'f', 4);
+    return stages.join(',');
+}
+
+// drawtext needs a real font file to render text; without one it falls back
+// to fontconfig, which isn't reliably configured on Windows (ffmpeg builds
+// there commonly lack a working fontconfig setup, producing a hard
+// "Cannot load default config file" failure instead of just rendering with
+// a system default the way it does on most Linux desktops). Pointing it at
+// a known-present font sidesteps fontconfig entirely, on every platform.
+QString defaultFontFile() {
+#if defined(Q_OS_WIN)
+    return QStringLiteral("C:/Windows/Fonts/arial.ttf");
+#elif defined(Q_OS_MACOS)
+    return QStringLiteral("/System/Library/Fonts/Helvetica.ttc");
+#else
+    const QStringList candidates{
+        QStringLiteral("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        QStringLiteral("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        QStringLiteral("/usr/share/fonts/TTF/DejaVuSans.ttf"),
+    };
+    for (const QString &candidate : candidates) {
+        if (QFileInfo::exists(candidate)) {
+            return candidate;
+        }
+    }
+    return QString(); // fontconfig is the norm on Linux; let it pick a default
+#endif
+}
+
+void drawtextPositionExpr(const QString &position, QString *xExpr, QString *yExpr) {
+    if (position == QStringLiteral("top-left")) {
+        *xExpr = QStringLiteral("20");
+        *yExpr = QStringLiteral("20");
+    } else if (position == QStringLiteral("top-right")) {
+        *xExpr = QStringLiteral("w-tw-20");
+        *yExpr = QStringLiteral("20");
+    } else if (position == QStringLiteral("bottom-left")) {
+        *xExpr = QStringLiteral("20");
+        *yExpr = QStringLiteral("h-th-20");
+    } else if (position == QStringLiteral("center")) {
+        *xExpr = QStringLiteral("(w-tw)/2");
+        *yExpr = QStringLiteral("(h-th)/2");
+    } else {
+        // bottom-right, and the default for anything unrecognized
+        *xExpr = QStringLiteral("w-tw-20");
+        *yExpr = QStringLiteral("h-th-20");
+    }
+}
+} // namespace
+
+QStringList FFmpegMediaEngine::buildVideoEditArgs(ConversionJob *job) {
+    QStringList clips;
+    clips << job->inputPath();
+    clips << job->extraInputPaths();
+
+    const auto &params = job->parameters();
+    const QVariantList clipTrims = params.value(QStringLiteral("clipTrims")).toList();
+
+    QStringList args{QStringLiteral("-y"), QStringLiteral("-hide_banner")};
+    for (const QString &clip : clips) {
+        args << QStringLiteral("-i") << clip;
+    }
+
+    QStringList filterParts;
+    QStringList vLabels, aLabels;
+    for (int i = 0; i < clips.size(); ++i) {
+        const QVariantList trim = i < clipTrims.size() ? clipTrims.at(i).toList() : QVariantList();
+        const double start = trim.size() > 0 ? trim.at(0).toDouble() : 0.0;
+        const bool hasEnd = trim.size() > 1 && trim.at(1).toDouble() > 0.0;
+        const double end = hasEnd ? trim.at(1).toDouble() : 0.0;
+
+        QString vTrim = QStringLiteral("trim=start=%1").arg(start, 0, 'f', 3);
+        if (hasEnd) {
+            vTrim += QStringLiteral(":end=%1").arg(end, 0, 'f', 3);
+        }
+        filterParts << QStringLiteral("[%1:v]%2,setpts=PTS-STARTPTS[v%1]").arg(i).arg(vTrim);
+
+        QString aTrim = QStringLiteral("atrim=start=%1").arg(start, 0, 'f', 3);
+        if (hasEnd) {
+            aTrim += QStringLiteral(":end=%1").arg(end, 0, 'f', 3);
+        }
+        filterParts << QStringLiteral("[%1:a]%2,asetpts=PTS-STARTPTS[a%1]").arg(i).arg(aTrim);
+
+        vLabels << QStringLiteral("[v%1]").arg(i);
+        aLabels << QStringLiteral("[a%1]").arg(i);
+    }
+
+    // concat interleaves inputs as v0,a0,v1,a1,...
+    QStringList concatInputs;
+    for (int i = 0; i < clips.size(); ++i) {
+        concatInputs << vLabels.at(i) << aLabels.at(i);
+    }
+    filterParts << QStringLiteral("%1concat=n=%2:v=1:a=1[cv][ca]").arg(concatInputs.join(QString())).arg(clips.size());
+
+    QString videoLabel = QStringLiteral("cv");
+    QString audioLabel = QStringLiteral("ca");
+
+    const double brightness = params.value(QStringLiteral("brightness"), 0.0).toDouble();
+    const double contrast = params.value(QStringLiteral("contrast"), 1.0).toDouble();
+    const double saturation = params.value(QStringLiteral("saturation"), 1.0).toDouble();
+    if (brightness != 0.0 || contrast != 1.0 || saturation != 1.0) {
+        filterParts << QStringLiteral("[%1]eq=brightness=%2:contrast=%3:saturation=%4[eqv]")
+                            .arg(videoLabel)
+                            .arg(brightness, 0, 'f', 3)
+                            .arg(contrast, 0, 'f', 3)
+                            .arg(saturation, 0, 'f', 3);
+        videoLabel = QStringLiteral("eqv");
+    }
+
+    const double speed = params.value(QStringLiteral("speed"), 1.0).toDouble();
+    if (speed > 0.0 && speed != 1.0) {
+        filterParts << QStringLiteral("[%1]setpts=PTS/%2[spv]").arg(videoLabel).arg(speed, 0, 'f', 4);
+        videoLabel = QStringLiteral("spv");
+        filterParts << QStringLiteral("[%1]%2[spa]").arg(audioLabel, atempoChain(speed));
+        audioLabel = QStringLiteral("spa");
+    }
+
+    const QString overlayText = params.value(QStringLiteral("overlayText")).toString();
+    if (!overlayText.isEmpty()) {
+        QString xExpr, yExpr;
+        drawtextPositionExpr(params.value(QStringLiteral("overlayPosition"), "bottom-right").toString(), &xExpr,
+                              &yExpr);
+        const int fontSize = params.value(QStringLiteral("overlayFontSize"), 32).toInt();
+        const QString fontFile = defaultFontFile();
+        // A colon in the font path (e.g. "C:/Windows/...") would otherwise
+        // be parsed as a drawtext key=value separator.
+        const QString fontFileArg =
+            fontFile.isEmpty() ? QString()
+                                : QStringLiteral(":fontfile='%1'").arg(QString(fontFile).replace(':', "\\:"));
+        filterParts << QStringLiteral("[%1]drawtext=text='%2':x=%3:y=%4:fontsize=%5:fontcolor=white:"
+                                       "borderw=2:bordercolor=black@0.7%6[txtv]")
+                            .arg(videoLabel, escapeDrawtext(overlayText), xExpr, yExpr)
+                            .arg(fontSize)
+                            .arg(fontFileArg);
+        videoLabel = QStringLiteral("txtv");
+    }
+
+    args << QStringLiteral("-filter_complex") << filterParts.join(';');
+    args << QStringLiteral("-map") << QStringLiteral("[%1]").arg(videoLabel);
+    args << QStringLiteral("-map") << QStringLiteral("[%1]").arg(audioLabel);
+    args << QStringLiteral("-c:v") << QStringLiteral("libx264") << QStringLiteral("-crf") << QStringLiteral("20");
+    args << QStringLiteral("-c:a") << QStringLiteral("aac");
+    args << QStringLiteral("-progress") << QStringLiteral("pipe:1") << QStringLiteral("-nostats");
+    args << job->outputPath();
+    return args;
+}
+
+QStringList FFmpegMediaEngine::buildImageEditArgs(ConversionJob *job) {
+    FFmpegCommandBuilder builder;
+    builder.setInput(job->inputPath()).setOutput(job->outputPath()).setOverwrite(true);
+
+    const auto &params = job->parameters();
+
+    const QVariantList crop = params.value(QStringLiteral("crop")).toList();
+    if (crop.size() == 4) {
+        builder.addVideoFilter(QStringLiteral("crop=%1:%2:%3:%4")
+                                    .arg(crop.at(2).toInt())
+                                    .arg(crop.at(3).toInt())
+                                    .arg(crop.at(0).toInt())
+                                    .arg(crop.at(1).toInt()));
+    }
+
+    if (params.contains(QStringLiteral("resizeWidth")) && params.contains(QStringLiteral("resizeHeight"))) {
+        builder.addVideoFilter(QStringLiteral("scale=%1:%2:flags=lanczos")
+                                    .arg(params.value(QStringLiteral("resizeWidth")).toInt())
+                                    .arg(params.value(QStringLiteral("resizeHeight")).toInt()));
+    }
+
+    const double brightness = params.value(QStringLiteral("brightness"), 0.0).toDouble();
+    const double contrast = params.value(QStringLiteral("contrast"), 1.0).toDouble();
+    const double saturation = params.value(QStringLiteral("saturation"), 1.0).toDouble();
+    if (brightness != 0.0 || contrast != 1.0 || saturation != 1.0) {
+        builder.addVideoFilter(QStringLiteral("eq=brightness=%1:contrast=%2:saturation=%3")
+                                    .arg(brightness, 0, 'f', 3)
+                                    .arg(contrast, 0, 'f', 3)
+                                    .arg(saturation, 0, 'f', 3));
+    }
+
+    const double blur = params.value(QStringLiteral("blur"), 0.0).toDouble();
+    if (blur > 0.0) {
+        builder.addVideoFilter(QStringLiteral("gblur=sigma=%1").arg(blur, 0, 'f', 2));
+    }
+
+    const QString overlayText = params.value(QStringLiteral("overlayText")).toString();
+    if (!overlayText.isEmpty()) {
+        QString xExpr, yExpr;
+        drawtextPositionExpr(params.value(QStringLiteral("overlayPosition"), "bottom-right").toString(), &xExpr,
+                              &yExpr);
+        const int fontSize = params.value(QStringLiteral("overlayFontSize"), 32).toInt();
+        const QString fontFile = defaultFontFile();
+        const QString fontFileArg =
+            fontFile.isEmpty() ? QString()
+                                : QStringLiteral(":fontfile='%1'").arg(QString(fontFile).replace(':', "\\:"));
+        builder.addVideoFilter(QStringLiteral("drawtext=text='%1':x=%2:y=%3:fontsize=%4:fontcolor=white:"
+                                               "borderw=2:bordercolor=black@0.7%5")
+                                    .arg(escapeDrawtext(overlayText), xExpr, yExpr)
+                                    .arg(fontSize)
+                                    .arg(fontFileArg));
+    }
+
+    const QString targetExt = job->targetFormat().toLower();
+    if (targetExt == QStringLiteral("jpg") || targetExt == QStringLiteral("jpeg")) {
+        builder.addExtraArgs(
+            {QStringLiteral("-q:v"), QString::number(params.value(QStringLiteral("jpegQuality"), 2).toInt())});
+    } else if (targetExt == QStringLiteral("webp")) {
+        builder.addExtraArgs(
+            {QStringLiteral("-quality"), QString::number(params.value(QStringLiteral("quality"), 90).toInt())});
+    }
+
+    return builder.build();
+}
+
 void FFmpegMediaEngine::startConversion(ConversionJob *job) {
     const QUuid jobId = job->id();
     if (m_runningJobs.contains(jobId)) {
@@ -207,15 +452,54 @@ void FFmpegMediaEngine::startConversion(ConversionJob *job) {
     }
 
     job->setStatus(JobStatus::Preparing);
-    const MediaProbeResult probeResult = FFprobe::probe(job->inputPath());
-    if (!probeResult.valid) {
-        job->setErrorMessage(probeResult.errorMessage);
-        job->setStatus(JobStatus::Failed);
-        emit jobFinished(jobId, false, probeResult.errorMessage);
-        return;
-    }
 
-    const QStringList args = buildArgsForJob(job, probeResult);
+    const bool isVideoEdit =
+        job->parameters().value(QStringLiteral("operation")).toString() == QStringLiteral("videoEdit");
+
+    QStringList args;
+    double totalDurationSeconds = 0.0;
+
+    if (isVideoEdit) {
+        // Multiple inputs, no single probeResult to drive progress% off of —
+        // sum every clip's real duration instead (trim points aren't
+        // subtracted; close enough for an ETA, not worth a second pass).
+        QStringList clips{job->inputPath()};
+        clips << job->extraInputPaths();
+        for (const QString &clip : clips) {
+            const MediaProbeResult clipProbe = FFprobe::probe(clip);
+            if (!clipProbe.valid) {
+                const QString errorText = QStringLiteral("Could not read %1: %2").arg(clip, clipProbe.errorMessage);
+                job->setErrorMessage(errorText);
+                job->setStatus(JobStatus::Failed);
+                emit jobFinished(jobId, false, errorText);
+                return;
+            }
+            totalDurationSeconds += clipProbe.durationSeconds;
+        }
+        args = buildVideoEditArgs(job);
+    } else if (job->parameters().value(QStringLiteral("operation")).toString() == QStringLiteral("imageEdit")) {
+        // Single frame in, single frame out — no meaningful progress% to
+        // track (ffmpeg won't emit useful out_time for a still), but still
+        // validate the input exists and is readable before spawning.
+        const MediaProbeResult probeResult = FFprobe::probe(job->inputPath());
+        if (!probeResult.valid) {
+            job->setErrorMessage(probeResult.errorMessage);
+            job->setStatus(JobStatus::Failed);
+            emit jobFinished(jobId, false, probeResult.errorMessage);
+            return;
+        }
+        args = buildImageEditArgs(job);
+    } else {
+        const MediaProbeResult probeResult = FFprobe::probe(job->inputPath());
+        if (!probeResult.valid) {
+            job->setErrorMessage(probeResult.errorMessage);
+            job->setStatus(JobStatus::Failed);
+            emit jobFinished(jobId, false, probeResult.errorMessage);
+            return;
+        }
+        totalDurationSeconds = probeResult.durationSeconds;
+        args = buildArgsForJob(job, probeResult);
+    }
 
     auto *process = new QProcess(this);
     process->setProcessChannelMode(QProcess::SeparateChannels);
@@ -223,7 +507,7 @@ void FFmpegMediaEngine::startConversion(ConversionJob *job) {
     RunningJob running;
     running.process = process;
     running.job = job;
-    running.totalDurationSeconds = probeResult.durationSeconds;
+    running.totalDurationSeconds = totalDurationSeconds;
     running.wallClock.start();
     m_runningJobs.insert(jobId, running);
 

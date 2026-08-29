@@ -72,6 +72,8 @@ private:
     void onHardwareDetectionFinished();
     void openWatchFoldersDialog();
     void openPresetManagerDialog();
+    void openVideoEditorDialog();
+    void openImageEditorDialog(const QString &filePath);
     void onWatchedFileDetected(const QString &filePath, const magnify::watch::WatchRule &rule);
     void loadSettings();
     void saveSettings();

@@ -1,0 +1,20 @@
+﻿== Configuring Release build ==
+powershell.exe : CMake Error at C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineSystem.cmake:159 
+(message):
+At line:9 char:1
++ & powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_i ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (CMake Error at ...:159 (message)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  Could not find toolchain file:
+
+   "$VcpkgToolchain"
+Call Stack (most recent call first):
+  CMakeLists.txt:2 (project)
+
+
+CMake Error: CMake was unable to find a build program corresponding to "Ninja".  CMAKE_MAKE_PROGRAM is not set.  You 
+probably need to select a different build tool.
+CMake Error: CMAKE_CXX_COMPILER not set, after EnableLanguage
+-- Configuring incomplete, errors occurred!

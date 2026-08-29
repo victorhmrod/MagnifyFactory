@@ -29,6 +29,23 @@ public:
     static QStringList buildArgsForJob(magnify::core::ConversionJob *job,
                                         const MediaProbeResult &probeResult);
 
+    // Builds the ffmpeg argument list for job->parameters()["operation"] ==
+    // "videoEdit": trims each clip (job->inputPath() + extraInputPaths(),
+    // in order) per parameters()["clipTrims"], concatenates them, then
+    // applies color/speed/text-overlay filters from the remaining
+    // parameters(). A filter_complex graph, unlike the single-input, mostly
+    // flag-based shape buildArgsForJob() produces — different enough to
+    // warrant its own builder rather than bending FFmpegCommandBuilder
+    // around a case it wasn't designed for. Also independently testable.
+    static QStringList buildVideoEditArgs(magnify::core::ConversionJob *job);
+
+    // Builds the ffmpeg argument list for job->parameters()["operation"] ==
+    // "imageEdit": a single linear -vf chain (crop, then resize, then
+    // color/blur, then a text overlay) applied to one input image. Far
+    // simpler than buildVideoEditArgs() since there's no timeline to
+    // assemble — one frame in, one frame out.
+    static QStringList buildImageEditArgs(magnify::core::ConversionJob *job);
+
 private:
     struct RunningJob {
         QProcess *process = nullptr;

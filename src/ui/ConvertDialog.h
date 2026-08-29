@@ -15,6 +15,10 @@ class QLabel;
 class QPushButton;
 QT_END_NAMESPACE
 
+namespace magnify::core {
+class JobManager;
+}
+
 namespace magnify::ui {
 
 // Modal popup shown as soon as a file is added (drag-and-drop, browse, or
@@ -34,8 +38,12 @@ public:
     // isSingleFile enables the Trim tool (Video/Audio) and the preview pane
     // (Image/PDF) — both need one real file path, so neither is offered for
     // a batch of files.
+    // jobManager, when non-null, enables the Image category's "Edit
+    // Image..." tool (single file only), which opens ImageEditorDialog
+    // directly and enqueues its own job — this dialog then closes without
+    // MainWindow enqueueing anything else (selectedFormat() stays empty).
     ConvertDialog(const QString &fileName, magnify::core::FormatCategory sourceCategory, QWidget *parent = nullptr,
-                  bool isSingleFile = false);
+                  bool isSingleFile = false, magnify::core::JobManager *jobManager = nullptr);
 
     QString selectedFormat() const { return m_selectedFormat; }
     // Empty unless a preset button was picked; MainWindow merges this into
@@ -50,6 +58,7 @@ private:
     void addTrimTool(QVBoxLayout *layout, const QString &filePath);
     void addRotateTool(QVBoxLayout *layout, const QString &filePath);
     void addSubtitleExtractTool(QVBoxLayout *layout);
+    void addImageEditTool(QVBoxLayout *layout, const QString &filePath);
 
     // Loads m_originalPixmap for the preview pane (Image: read directly;
     // PDF: render page 1 via pdftoppm), synchronously — this only runs once,
@@ -63,6 +72,7 @@ private:
 
     QString m_selectedFormat;
     QVariantMap m_selectedParameters;
+    magnify::core::JobManager *m_jobManager = nullptr;
 
     bool m_useConfirmFlow = false;
     magnify::core::FormatCategory m_sourceCategory;

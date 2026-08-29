@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(MagnifyFactory VERSION 0.3.1 LANGUAGES CXX)
+project(MagnifyFactory VERSION 0.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -73,6 +73,12 @@ set(MAGNIFY_UI_SOURCES
     src/ui/PresetEditorDialog.cpp
     src/ui/PresetManagerDialog.h
     src/ui/PresetManagerDialog.cpp
+    src/ui/VideoEditorDialog.h
+    src/ui/VideoEditorDialog.cpp
+    src/ui/CropLabel.h
+    src/ui/CropLabel.cpp
+    src/ui/ImageEditorDialog.h
+    src/ui/ImageEditorDialog.cpp
 )
 
 add_library(magnify_core STATIC ${MAGNIFY_CORE_SOURCES})
@@ -104,7 +110,12 @@ if(WIN32)
     list(APPEND MAGNIFY_RESOURCES resources/app.rc)
 endif()
 
-add_executable(MagnifyFactory WIN32
+# qt_add_executable (rather than plain add_executable) is required on
+# Android: it builds MagnifyFactory as a shared library instead of a normal
+# binary, which is what Qt's Android activity loads via JNI, and wires up
+# the androiddeployqt packaging target. It behaves identically to
+# add_executable on desktop platforms otherwise.
+qt_add_executable(MagnifyFactory WIN32
     src/main.cpp
     ${MAGNIFY_UI_SOURCES}
     ${MAGNIFY_RESOURCES}
@@ -169,11 +180,13 @@ set_target_properties(magnify_plugin_sample PROPERTIES
 )
 
 # `cmake --install` support — not used by the plain dev/Windows-installer/
-# AppImage workflows (all of which run straight out of build/), but needed
-# for flatpak-builder's cmake-ninja buildsystem, which installs into the
-# Flatpak sandbox's /app prefix. The .desktop/icon install (which follow
-# the Flatpak app-id naming convention) only make sense on Linux.
+# AppImage/Android workflows (which run straight out of build/ or package via
+# androiddeployqt), but needed for flatpak-builder's cmake-ninja buildsystem,
+# which installs into the Flatpak sandbox's /app prefix. The .desktop/icon
+# install (which follow the Flatpak app-id naming convention) only make
+# sense on Linux.
 include(GNUInstallDirs)
+if(NOT ANDROID)
 install(TARGETS MagnifyFactory magnify RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 if(UNIX AND NOT APPLE)
     install(FILES flatpak/org.magnifyfactory.MagnifyFactory.desktop
@@ -181,6 +194,7 @@ if(UNIX AND NOT APPLE)
     install(FILES resources/icon.png
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
         RENAME org.magnifyfactory.MagnifyFactory.png)
+endif()
 endif()
 
 enable_testing()
