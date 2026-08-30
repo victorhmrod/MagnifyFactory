@@ -47,8 +47,26 @@ can be added without touching existing code.
   blur, and add a text overlay — all shown live in an in-app preview, then
   re-applied for real by ffmpeg on export (crop/scale/eq/gblur/drawtext), so
   what you get is genuinely processed, not just what the preview
-  approximated. Two pieces of turning MagnifyFactory from a converter into a
-  proper media-editing tool; audio and document editors are next.
+  approximated.
+- **Audio Editor** — click **Audio Editor...** (or drop several audio files
+  and choose *Open in Audio Editor*) to join multiple clips into one: trim
+  each clip independently, then apply volume, speed (0.5x–2x), fade in/out,
+  and loudness normalization to the joined result — one real ffmpeg filter
+  graph, not a fake preview.
+- **Document Editor** — click **Document Editor...**, or *Edit Document...*
+  on a PDF in the format popup: a grid of real page thumbnails you can drag
+  to reorder, delete, rotate in 90° steps, or insert pages from another PDF
+  into. Export rebuilds the document for real via `qpdf`.
+- **3D Model Editor** — click **3D Model Editor...**, or *Edit 3D Model...*
+  on a model in the format popup: scale, rotate (X/Y/Z), recenter the
+  origin, and reduce polygon count (decimate), then export to OBJ, FBX,
+  glTF/GLB, STL, PLY, or COLLADA — all real processing via a headless
+  Blender instance (Blender must be installed and on `PATH`). There's no
+  in-app 3D preview yet — a real viewport is a project of its own — so this
+  one is a numeric-parameter form, but the export is still genuine Blender
+  processing, not a fake result.
+- Five real editors turning MagnifyFactory from a converter into a proper
+  media-editing suite: video, image, audio, document, and 3D models.
 - **Drag-and-drop conversion** — drop a file, pick the target format from a
   popup, done. Drop several at once (or use *Add Folder...*, with an
   optional recursive scan) and it's one popup per file type, not per file.

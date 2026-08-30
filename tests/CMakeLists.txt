@@ -63,3 +63,6 @@ target_link_libraries(smoke_image_editor PRIVATE Qt6::Core Qt6::Gui magnify_core
 
 add_executable(smoke_document_editor smoke_document_editor.cpp)
 target_link_libraries(smoke_document_editor PRIVATE Qt6::Core Qt6::Gui magnify_core magnify_engines)
+
+add_executable(smoke_model3d smoke_model3d.cpp)
+target_link_libraries(smoke_model3d PRIVATE Qt6::Core magnify_core magnify_engines)

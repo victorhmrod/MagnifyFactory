@@ -28,6 +28,7 @@
 
 #include "AudioEditorDialog.h"
 #include "ConvertDialog.h"
+#include "Model3DEditorDialog.h"
 #include "DocumentEditorDialog.h"
 #include "ImageEditorDialog.h"
 #include "PresetManagerDialog.h"
@@ -40,6 +41,7 @@
 #include "engines/document/DocumentEngine.h"
 #include "engines/ffmpeg/FFmpegMediaEngine.h"
 #include "engines/ffmpeg/FFprobe.h"
+#include "engines/model3d/Model3DEngine.h"
 #include "engines/pdf/PdfEngine.h"
 #include "hardware/HardwareAccelerationManager.h"
 #include "plugins/PluginManager.h"
@@ -84,11 +86,13 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_pdfEngine = std::make_unique<magnify::engines::pdf::PdfEngine>();
     m_archiveEngine = std::make_unique<magnify::engines::archive::ArchiveEngine>();
     m_documentEngine = std::make_unique<magnify::engines::document::DocumentEngine>();
+    m_model3dEngine = std::make_unique<magnify::engines::model3d::Model3DEngine>();
     m_jobManager = std::make_unique<JobManager>();
     m_jobManager->registerEngine(m_ffmpegEngine.get());
     m_jobManager->registerEngine(m_pdfEngine.get());
     m_jobManager->registerEngine(m_archiveEngine.get());
     m_jobManager->registerEngine(m_documentEngine.get());
+    m_jobManager->registerEngine(m_model3dEngine.get());
     m_watchFolderManager = std::make_unique<WatchFolderManager>();
     connect(m_watchFolderManager.get(), &WatchFolderManager::fileDetected, this, &MainWindow::onWatchedFileDetected);
 
@@ -151,6 +155,7 @@ void MainWindow::buildUi() {
     addCategoryItem(QStringLiteral("📄  PDF"), FormatCategory::Pdf);
     addCategoryItem(QStringLiteral("📝  Documents"), FormatCategory::Document);
     addCategoryItem(QStringLiteral("🗜  Archive"), FormatCategory::Archive);
+    addCategoryItem(QStringLiteral("🧊  3D Models"), FormatCategory::Model3D);
     m_sidebar->setCurrentRow(0);
     connect(m_sidebar, &QListWidget::currentItemChanged, this,
             [this](QListWidgetItem *current, QListWidgetItem *) { onCategorySelected(current); });
@@ -274,6 +279,15 @@ void MainWindow::buildUi() {
     });
     controlsRow->addWidget(documentEditorButton);
 
+    auto *model3dEditorButton = new QPushButton(QStringLiteral("3D Model Editor..."), content);
+    connect(model3dEditorButton, &QPushButton::clicked, this, [this]() {
+        const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Select a 3D model to edit"));
+        if (!path.isEmpty()) {
+            openModel3DEditorDialog(path);
+        }
+    });
+    controlsRow->addWidget(model3dEditorButton);
+
     controlsRow->addStretch(1);
     contentLayout->addLayout(controlsRow);
 
@@ -315,6 +329,11 @@ void MainWindow::openVideoEditorDialog() {
 
 void MainWindow::openAudioEditorDialog() {
     AudioEditorDialog dialog(m_jobManager.get(), this);
+    dialog.exec();
+}
+
+void MainWindow::openModel3DEditorDialog(const QString &filePath) {
+    Model3DEditorDialog dialog(filePath, m_jobManager.get(), this);
     dialog.exec();
 }
 

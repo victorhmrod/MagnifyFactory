@@ -24,6 +24,7 @@ namespace magnify::engines::ffmpeg { class FFmpegMediaEngine; }
 namespace magnify::engines::pdf { class PdfEngine; }
 namespace magnify::engines::archive { class ArchiveEngine; }
 namespace magnify::engines::document { class DocumentEngine; }
+namespace magnify::engines::model3d { class Model3DEngine; }
 namespace magnify::core { class JobManager; class ConversionJob; }
 namespace magnify::watch { class WatchFolderManager; struct WatchRule; }
 namespace magnify::plugins { class PluginManager; }
@@ -74,6 +75,7 @@ private:
     void openPresetManagerDialog();
     void openVideoEditorDialog();
     void openAudioEditorDialog();
+    void openModel3DEditorDialog(const QString &filePath);
     void openImageEditorDialog(const QString &filePath);
     void openDocumentEditorDialog(const QString &filePath);
     void onWatchedFileDetected(const QString &filePath, const magnify::watch::WatchRule &rule);
@@ -88,6 +90,7 @@ private:
     std::unique_ptr<magnify::engines::pdf::PdfEngine> m_pdfEngine;
     std::unique_ptr<magnify::engines::archive::ArchiveEngine> m_archiveEngine;
     std::unique_ptr<magnify::engines::document::DocumentEngine> m_documentEngine;
+    std::unique_ptr<magnify::engines::model3d::Model3DEngine> m_model3dEngine;
     std::unique_ptr<magnify::core::JobManager> m_jobManager;
     std::unique_ptr<magnify::watch::WatchFolderManager> m_watchFolderManager;
     std::unique_ptr<magnify::plugins::PluginManager> m_pluginManager;

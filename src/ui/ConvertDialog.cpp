@@ -15,6 +15,7 @@
 
 #include "AudioEditorDialog.h"
 #include "DocumentEditorDialog.h"
+#include "Model3DEditorDialog.h"
 #include "ImageEditorDialog.h"
 #include "TrimDialog.h"
 #include "core/JobManager.h"
@@ -133,6 +134,12 @@ ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCateg
             // (e.g. docx -> odt), so offer the full Document category too.
             addCustomSection(layout, QStringLiteral("PDF"), {{QStringLiteral("PDF"), QStringLiteral("pdf")}});
             addFormatSection(layout, QStringLiteral("DOCUMENT"), FormatCategory::Document);
+            break;
+        case FormatCategory::Model3D:
+            if (isSingleFile && m_jobManager) {
+                addModel3DEditTool(layout, fileName);
+            }
+            addFormatSection(layout, QStringLiteral("3D MODEL"), FormatCategory::Model3D);
             break;
         default:
             addFormatSection(layout, QStringLiteral("VIDEO"), FormatCategory::Video);
@@ -421,6 +428,25 @@ void ConvertDialog::addImageEditTool(QVBoxLayout *layout, const QString &filePat
         // The editor enqueues its own job (or the user cancelled) — either
         // way MainWindow shouldn't also enqueue from this dialog's own
         // selectedFormat(), which stays empty.
+        reject();
+    });
+
+    auto *row = new QHBoxLayout();
+    row->addWidget(button);
+    row->addStretch(1);
+    layout->addLayout(row);
+}
+
+void ConvertDialog::addModel3DEditTool(QVBoxLayout *layout, const QString &filePath) {
+    auto *button = new QPushButton(QStringLiteral("Edit 3D Model..."), this);
+    button->setProperty("class", QStringLiteral("formatButton"));
+    button->setCursor(Qt::PointingHandCursor);
+    connect(button, &QPushButton::clicked, this, [this, filePath]() {
+        Model3DEditorDialog editor(filePath, m_jobManager, this);
+        editor.exec();
+        // Same reasoning as the other *EditTool methods: the editor
+        // enqueues its own job (or the user cancelled), so this dialog
+        // shouldn't also enqueue from selectedFormat(), which stays empty.
         reject();
     });
 

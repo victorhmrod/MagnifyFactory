@@ -47,6 +47,8 @@ set(MAGNIFY_ENGINE_SOURCES
     src/engines/archive/ArchiveEngine.cpp
     src/engines/document/DocumentEngine.h
     src/engines/document/DocumentEngine.cpp
+    src/engines/model3d/Model3DEngine.h
+    src/engines/model3d/Model3DEngine.cpp
 )
 
 set(MAGNIFY_WATCH_SOURCES
@@ -83,6 +85,8 @@ set(MAGNIFY_UI_SOURCES
     src/ui/DocumentEditorDialog.cpp
     src/ui/AudioEditorDialog.h
     src/ui/AudioEditorDialog.cpp
+    src/ui/Model3DEditorDialog.h
+    src/ui/Model3DEditorDialog.cpp
 )
 
 add_library(magnify_core STATIC ${MAGNIFY_CORE_SOURCES})

@@ -71,6 +71,15 @@ void FormatRegistry::registerBuiltins() {
     // --- Subtitles (extracted from video via ffmpeg) ---------------------------
     registerFormat({"SubRip", "srt", FormatCategory::Subtitle, {"application/x-subrip"}, true, true});
 
+    // --- 3D models (Blender headless) ---------------------------------------
+    registerFormat({"Wavefront OBJ", "obj", FormatCategory::Model3D, {"model/obj"}, true, true});
+    registerFormat({"FBX", "fbx", FormatCategory::Model3D, {"application/octet-stream"}, true, true});
+    registerFormat({"glTF Binary", "glb", FormatCategory::Model3D, {"model/gltf-binary"}, true, true});
+    registerFormat({"glTF", "gltf", FormatCategory::Model3D, {"model/gltf+json"}, true, true});
+    registerFormat({"STL", "stl", FormatCategory::Model3D, {"model/stl"}, true, true});
+    registerFormat({"PLY", "ply", FormatCategory::Model3D, {"application/octet-stream"}, true, true});
+    registerFormat({"COLLADA", "dae", FormatCategory::Model3D, {"model/vnd.collada+xml"}, true, true});
+
     // --- Archives --------------------------------------------------------------
     // zip/7z can be created by 7-Zip; rar/tar/gz are extraction-only (creating a
     // proprietary .rar isn't something 7-Zip's free CLI can do).

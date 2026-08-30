@@ -14,6 +14,7 @@ enum class FormatCategory {
     Archive,
     Document,
     Subtitle,
+    Model3D,
     Unknown
 };
 
