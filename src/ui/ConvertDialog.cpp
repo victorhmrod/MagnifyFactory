@@ -13,6 +13,7 @@
 #include <QUuid>
 #include <QVBoxLayout>
 
+#include "AudioEditorDialog.h"
 #include "DocumentEditorDialog.h"
 #include "ImageEditorDialog.h"
 #include "TrimDialog.h"
@@ -92,6 +93,9 @@ ConvertDialog::ConvertDialog(const QString &fileName, FormatCategory sourceCateg
         case FormatCategory::Audio:
             if (isSingleFile) {
                 addTrimTool(layout, fileName);
+                if (m_jobManager) {
+                    addAudioEditTool(layout, fileName);
+                }
             }
             addPresetSection(layout, FormatCategory::Audio);
             addFormatSection(layout, QStringLiteral("AUDIO"), FormatCategory::Audio);
@@ -417,6 +421,27 @@ void ConvertDialog::addImageEditTool(QVBoxLayout *layout, const QString &filePat
         // The editor enqueues its own job (or the user cancelled) — either
         // way MainWindow shouldn't also enqueue from this dialog's own
         // selectedFormat(), which stays empty.
+        reject();
+    });
+
+    auto *row = new QHBoxLayout();
+    row->addWidget(button);
+    row->addStretch(1);
+    layout->addLayout(row);
+}
+
+void ConvertDialog::addAudioEditTool(QVBoxLayout *layout, const QString &filePath) {
+    auto *button = new QPushButton(QStringLiteral("Edit Audio..."), this);
+    button->setProperty("class", QStringLiteral("formatButton"));
+    button->setCursor(Qt::PointingHandCursor);
+    connect(button, &QPushButton::clicked, this, [this, filePath]() {
+        AudioEditorDialog editor(m_jobManager, this);
+        editor.addClips({filePath});
+        editor.exec();
+        // Same reasoning as addImageEditTool()/addDocumentEditTool(): the
+        // editor enqueues its own job (or the user cancelled), so this
+        // dialog shouldn't also enqueue from selectedFormat(), which stays
+        // empty.
         reject();
     });
 

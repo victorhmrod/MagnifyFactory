@@ -46,6 +46,14 @@ public:
     // assemble — one frame in, one frame out.
     static QStringList buildImageEditArgs(magnify::core::ConversionJob *job);
 
+    // Builds the ffmpeg argument list for job->parameters()["operation"] ==
+    // "audioEdit": trims each clip (job->inputPath() + extraInputPaths(), in
+    // order) per parameters()["clipTrims"], concatenates them (audio-only —
+    // no video stream involved), then applies volume/speed/normalize/fade
+    // filters from the remaining parameters(). Same filter_complex shape as
+    // buildVideoEditArgs() but audio-only throughout.
+    static QStringList buildAudioEditArgs(magnify::core::ConversionJob *job);
+
 private:
     struct RunningJob {
         QProcess *process = nullptr;

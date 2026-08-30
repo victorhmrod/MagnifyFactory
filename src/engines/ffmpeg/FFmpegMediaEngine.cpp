@@ -445,6 +445,100 @@ QStringList FFmpegMediaEngine::buildImageEditArgs(ConversionJob *job) {
     return builder.build();
 }
 
+namespace {
+QString audioCodecForExt(const QString &targetExt) {
+    if (targetExt == QStringLiteral("mp3")) {
+        return QStringLiteral("libmp3lame");
+    }
+    if (targetExt == QStringLiteral("wav")) {
+        return QStringLiteral("pcm_s16le");
+    }
+    if (targetExt == QStringLiteral("flac")) {
+        return QStringLiteral("flac");
+    }
+    if (targetExt == QStringLiteral("ogg")) {
+        return QStringLiteral("libvorbis");
+    }
+    // aac, m4a, and anything unrecognized.
+    return QStringLiteral("aac");
+}
+} // namespace
+
+QStringList FFmpegMediaEngine::buildAudioEditArgs(ConversionJob *job) {
+    QStringList clips;
+    clips << job->inputPath();
+    clips << job->extraInputPaths();
+
+    const auto &params = job->parameters();
+    const QVariantList clipTrims = params.value(QStringLiteral("clipTrims")).toList();
+
+    QStringList args{QStringLiteral("-y"), QStringLiteral("-hide_banner")};
+    for (const QString &clip : clips) {
+        args << QStringLiteral("-i") << clip;
+    }
+
+    QStringList filterParts;
+    QStringList aLabels;
+    for (int i = 0; i < clips.size(); ++i) {
+        const QVariantList trim = i < clipTrims.size() ? clipTrims.at(i).toList() : QVariantList();
+        const double start = trim.size() > 0 ? trim.at(0).toDouble() : 0.0;
+        const bool hasEnd = trim.size() > 1 && trim.at(1).toDouble() > 0.0;
+        const double end = hasEnd ? trim.at(1).toDouble() : 0.0;
+
+        QString aTrim = QStringLiteral("atrim=start=%1").arg(start, 0, 'f', 3);
+        if (hasEnd) {
+            aTrim += QStringLiteral(":end=%1").arg(end, 0, 'f', 3);
+        }
+        filterParts << QStringLiteral("[%1:a]%2,asetpts=PTS-STARTPTS[a%1]").arg(i).arg(aTrim);
+        aLabels << QStringLiteral("[a%1]").arg(i);
+    }
+
+    filterParts << QStringLiteral("%1concat=n=%2:v=0:a=1[ca]").arg(aLabels.join(QString())).arg(clips.size());
+    QString audioLabel = QStringLiteral("ca");
+
+    const double volumeDb = params.value(QStringLiteral("volumeDb"), 0.0).toDouble();
+    if (volumeDb != 0.0) {
+        filterParts << QStringLiteral("[%1]volume=%2dB[vola]").arg(audioLabel).arg(volumeDb, 0, 'f', 2);
+        audioLabel = QStringLiteral("vola");
+    }
+
+    const double speed = params.value(QStringLiteral("speed"), 1.0).toDouble();
+    if (speed > 0.0 && speed != 1.0) {
+        filterParts << QStringLiteral("[%1]%2[spa]").arg(audioLabel, atempoChain(speed));
+        audioLabel = QStringLiteral("spa");
+    }
+
+    if (params.value(QStringLiteral("normalize"), false).toBool()) {
+        filterParts << QStringLiteral("[%1]loudnorm=I=-16:LRA=11:TP=-1.5[norma]").arg(audioLabel);
+        audioLabel = QStringLiteral("norma");
+    }
+
+    const double fadeInSeconds = params.value(QStringLiteral("fadeInSeconds"), 0.0).toDouble();
+    if (fadeInSeconds > 0.0) {
+        filterParts << QStringLiteral("[%1]afade=t=in:st=0:d=%2[fadein]").arg(audioLabel).arg(fadeInSeconds, 0, 'f', 3);
+        audioLabel = QStringLiteral("fadein");
+    }
+
+    // Fading out needs the fade to start relative to the END of the stream,
+    // which isn't known here without a second probing pass — the standard
+    // ffmpeg workaround is to reverse, fade *in* over the desired duration,
+    // then reverse back, which fades out the true end regardless of length.
+    const double fadeOutSeconds = params.value(QStringLiteral("fadeOutSeconds"), 0.0).toDouble();
+    if (fadeOutSeconds > 0.0) {
+        filterParts << QStringLiteral("[%1]areverse,afade=t=in:st=0:d=%2,areverse[fadeout]")
+                            .arg(audioLabel)
+                            .arg(fadeOutSeconds, 0, 'f', 3);
+        audioLabel = QStringLiteral("fadeout");
+    }
+
+    args << QStringLiteral("-filter_complex") << filterParts.join(';');
+    args << QStringLiteral("-map") << QStringLiteral("[%1]").arg(audioLabel);
+    args << QStringLiteral("-c:a") << audioCodecForExt(job->targetFormat().toLower());
+    args << QStringLiteral("-progress") << QStringLiteral("pipe:1") << QStringLiteral("-nostats");
+    args << job->outputPath();
+    return args;
+}
+
 void FFmpegMediaEngine::startConversion(ConversionJob *job) {
     const QUuid jobId = job->id();
     if (m_runningJobs.contains(jobId)) {
@@ -489,6 +583,23 @@ void FFmpegMediaEngine::startConversion(ConversionJob *job) {
             return;
         }
         args = buildImageEditArgs(job);
+    } else if (job->parameters().value(QStringLiteral("operation")).toString() == QStringLiteral("audioEdit")) {
+        // Same reasoning as the videoEdit branch above: multiple inputs, so
+        // progress% is driven off the sum of each clip's real duration.
+        QStringList clips{job->inputPath()};
+        clips << job->extraInputPaths();
+        for (const QString &clip : clips) {
+            const MediaProbeResult clipProbe = FFprobe::probe(clip);
+            if (!clipProbe.valid) {
+                const QString errorText = QStringLiteral("Could not read %1: %2").arg(clip, clipProbe.errorMessage);
+                job->setErrorMessage(errorText);
+                job->setStatus(JobStatus::Failed);
+                emit jobFinished(jobId, false, errorText);
+                return;
+            }
+            totalDurationSeconds += clipProbe.durationSeconds;
+        }
+        args = buildAudioEditArgs(job);
     } else {
         const MediaProbeResult probeResult = FFprobe::probe(job->inputPath());
         if (!probeResult.valid) {

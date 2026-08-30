@@ -73,6 +73,7 @@ private:
     void openWatchFoldersDialog();
     void openPresetManagerDialog();
     void openVideoEditorDialog();
+    void openAudioEditorDialog();
     void openImageEditorDialog(const QString &filePath);
     void openDocumentEditorDialog(const QString &filePath);
     void onWatchedFileDetected(const QString &filePath, const magnify::watch::WatchRule &rule);

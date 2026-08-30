@@ -81,6 +81,8 @@ set(MAGNIFY_UI_SOURCES
     src/ui/ImageEditorDialog.cpp
     src/ui/DocumentEditorDialog.h
     src/ui/DocumentEditorDialog.cpp
+    src/ui/AudioEditorDialog.h
+    src/ui/AudioEditorDialog.cpp
 )
 
 add_library(magnify_core STATIC ${MAGNIFY_CORE_SOURCES})
