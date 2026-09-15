@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 
+#include <algorithm>
+
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDir>
@@ -12,7 +14,6 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
-#include <QListWidget>
 #include <QCloseEvent>
 #include <QMenu>
 #include <QMessageBox>
@@ -23,6 +24,7 @@
 #include <QStatusBar>
 #include <QTableWidget>
 #include <QVBoxLayout>
+#include <QVector>
 #include <QWidget>
 #include <QtConcurrentRun>
 
@@ -69,6 +71,38 @@ constexpr int ColumnEta = 4;
 
 constexpr int RoleCategory = Qt::UserRole + 1;
 constexpr int RoleJobId = Qt::UserRole + 2; // ConversionJob::id(), stored on the File column's item
+constexpr int RoleInsertOrder = Qt::UserRole + 3; // stamped on enqueue, used by the "Order added" sort key
+
+enum class QueueSortKey { InsertOrder, NameAsc, NameDesc, Status, Format };
+
+QString categoryDisplayName(FormatCategory category) {
+    switch (category) {
+        case FormatCategory::Video: return QStringLiteral("Video");
+        case FormatCategory::Audio: return QStringLiteral("Audio");
+        case FormatCategory::Image: return QStringLiteral("Images");
+        case FormatCategory::Pdf: return QStringLiteral("PDF");
+        case FormatCategory::Document: return QStringLiteral("Documents");
+        case FormatCategory::Archive: return QStringLiteral("Archive");
+        case FormatCategory::Model3D: return QStringLiteral("3D Models");
+        default: return QStringLiteral("Other");
+    }
+}
+
+// Builds a QFileDialog name filter restricted to the extensions belonging to
+// a category, so the sidebar selection actually narrows what the "click to
+// browse" picker offers instead of always listing every file on disk.
+QString fileDialogFilterForCategory(FormatCategory category) {
+    QStringList patterns;
+    for (const auto &format : FormatRegistry::instance().formatsInCategory(category)) {
+        if (format.supportsInput) {
+            patterns << QStringLiteral("*.%1").arg(format.extension);
+        }
+    }
+    if (patterns.isEmpty()) {
+        return QStringLiteral("All Files (*)");
+    }
+    return QStringLiteral("%1 Files (%2);;All Files (*)").arg(categoryDisplayName(category), patterns.join(' '));
+}
 
 QString statusColor(JobStatus status) {
     switch (status) {
@@ -119,10 +153,7 @@ MainWindow::~MainWindow() = default;
 void MainWindow::applyDarkTheme() {
     setStyleSheet(R"(
         QMainWindow, QWidget { background-color: #1e2126; color: #c9d1d9; font-size: 13px; }
-        QListWidget#sidebar { background-color: #17191d; border: none; padding-top: 8px; outline: none; }
-        QListWidget#sidebar::item { padding: 10px 16px; border-left: 3px solid transparent; }
-        QListWidget#sidebar::item:selected { background-color: #232833; border-left: 3px solid #58a6ff; color: #ffffff; }
-        QListWidget#sidebar::item:hover:!selected { background-color: #1f232a; }
+        QComboBox { background-color: #232833; border: 1px solid #3a4048; border-radius: 4px; padding: 4px 8px; }
         QPushButton#dropZone { background-color: #232833; border: 2px dashed #3a4048; border-radius: 8px; font-size: 13px; }
         QPushButton#dropZone:hover { border-color: #58a6ff; }
         QPushButton { background-color: #2d333b; border: 1px solid #3a4048; border-radius: 4px; padding: 6px 14px; }
@@ -140,27 +171,6 @@ void MainWindow::buildUi() {
     rootLayout->setContentsMargins(0, 0, 0, 0);
     rootLayout->setSpacing(0);
 
-    // --- Sidebar: format categories --------------------------------------
-    m_sidebar = new QListWidget(central);
-    m_sidebar->setObjectName(QStringLiteral("sidebar"));
-    m_sidebar->setFixedWidth(170);
-
-    auto addCategoryItem = [this](const QString &label, FormatCategory category) {
-        auto *item = new QListWidgetItem(label, m_sidebar);
-        item->setData(RoleCategory, static_cast<int>(category));
-    };
-    addCategoryItem(QStringLiteral("🎬  Video"), FormatCategory::Video);
-    addCategoryItem(QStringLiteral("🎵  Audio"), FormatCategory::Audio);
-    addCategoryItem(QStringLiteral("🖼  Images"), FormatCategory::Image);
-    addCategoryItem(QStringLiteral("📄  PDF"), FormatCategory::Pdf);
-    addCategoryItem(QStringLiteral("📝  Documents"), FormatCategory::Document);
-    addCategoryItem(QStringLiteral("🗜  Archive"), FormatCategory::Archive);
-    addCategoryItem(QStringLiteral("🧊  3D Models"), FormatCategory::Model3D);
-    m_sidebar->setCurrentRow(0);
-    connect(m_sidebar, &QListWidget::currentItemChanged, this,
-            [this](QListWidgetItem *current, QListWidgetItem *) { onCategorySelected(current); });
-    rootLayout->addWidget(m_sidebar);
-
     // --- Main content -------------------------------------------------------
     auto *content = new QWidget(central);
     auto *contentLayout = new QVBoxLayout(content);
@@ -177,7 +187,8 @@ void MainWindow::buildUi() {
     m_dropZoneButton->setCursor(Qt::PointingHandCursor);
     m_dropZoneButton->setText(QStringLiteral("Drag & drop files here, or click to browse"));
     connect(m_dropZoneButton, &QPushButton::clicked, this, [this]() {
-        const QStringList paths = QFileDialog::getOpenFileNames(this, QStringLiteral("Select files"));
+        const QStringList paths = QFileDialog::getOpenFileNames(
+            this, QStringLiteral("Select files"), QString(), fileDialogFilterForCategory(m_activeCategory));
         if (!paths.isEmpty()) {
             addInputFiles(paths);
         }
@@ -190,6 +201,39 @@ void MainWindow::buildUi() {
     connect(addFolderButton, &QPushButton::clicked, this, &MainWindow::addInputFolder);
     dropRow->addWidget(addFolderButton);
     contentLayout->addLayout(dropRow, 1);
+
+    // --- Queue filter & sort -------------------------------------------------
+    auto *filterSortRow = new QHBoxLayout();
+    filterSortRow->addWidget(new QLabel(QStringLiteral("Filter:"), content));
+    m_filterCombo = new QComboBox(content);
+    auto addFilterItem = [this](const QString &label, FormatCategory category) {
+        m_filterCombo->addItem(label, static_cast<int>(category));
+    };
+    addFilterItem(QStringLiteral("All Categories"), FormatCategory::Unknown);
+    addFilterItem(QStringLiteral("🎬  Video"), FormatCategory::Video);
+    addFilterItem(QStringLiteral("🎵  Audio"), FormatCategory::Audio);
+    addFilterItem(QStringLiteral("🖼  Images"), FormatCategory::Image);
+    addFilterItem(QStringLiteral("📄  PDF"), FormatCategory::Pdf);
+    addFilterItem(QStringLiteral("📝  Documents"), FormatCategory::Document);
+    addFilterItem(QStringLiteral("🗜  Archive"), FormatCategory::Archive);
+    addFilterItem(QStringLiteral("🧊  3D Models"), FormatCategory::Model3D);
+    connect(m_filterCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            &MainWindow::onFilterCategoryChanged);
+    filterSortRow->addWidget(m_filterCombo);
+
+    filterSortRow->addSpacing(16);
+    filterSortRow->addWidget(new QLabel(QStringLiteral("Sort by:"), content));
+    m_sortCombo = new QComboBox(content);
+    m_sortCombo->addItem(QStringLiteral("Order added"), static_cast<int>(QueueSortKey::InsertOrder));
+    m_sortCombo->addItem(QStringLiteral("Name (A-Z)"), static_cast<int>(QueueSortKey::NameAsc));
+    m_sortCombo->addItem(QStringLiteral("Name (Z-A)"), static_cast<int>(QueueSortKey::NameDesc));
+    m_sortCombo->addItem(QStringLiteral("Status"), static_cast<int>(QueueSortKey::Status));
+    m_sortCombo->addItem(QStringLiteral("Target format"), static_cast<int>(QueueSortKey::Format));
+    connect(m_sortCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this](int) { applyQueueSort(); });
+    filterSortRow->addWidget(m_sortCombo);
+    filterSortRow->addStretch(1);
+    contentLayout->addLayout(filterSortRow);
 
     // --- Queue table -------------------------------------------------------
     m_queueTable = new QTableWidget(0, 5, content);
@@ -297,7 +341,8 @@ void MainWindow::buildUi() {
     m_statusJobsLabel = new QLabel(this);
     statusBar()->addWidget(m_statusJobsLabel);
 
-    onCategorySelected(m_sidebar->currentItem());
+    m_activeCategory = static_cast<FormatCategory>(m_filterCombo->currentData().toInt());
+    applyQueueFilter();
 
     if (!m_pluginManager->loadedPlugins().isEmpty()) {
         QStringList names;
@@ -388,11 +433,73 @@ void MainWindow::populateHardwareCombo() {
     }
 }
 
-void MainWindow::onCategorySelected(QListWidgetItem *current) {
-    if (!current) {
+void MainWindow::onFilterCategoryChanged(int index) {
+    Q_UNUSED(index);
+    m_activeCategory = static_cast<FormatCategory>(m_filterCombo->currentData().toInt());
+    applyQueueFilter();
+}
+
+void MainWindow::applyQueueFilter() {
+    for (int row = 0; row < m_queueTable->rowCount(); ++row) {
+        auto *fileItem = m_queueTable->item(row, ColumnFile);
+        const auto rowCategory = static_cast<FormatCategory>(fileItem->data(RoleCategory).toInt());
+        const bool matches = m_activeCategory == FormatCategory::Unknown || rowCategory == m_activeCategory;
+        m_queueTable->setRowHidden(row, !matches);
+    }
+}
+
+void MainWindow::applyQueueSort() {
+    const int rowCount = m_queueTable->rowCount();
+    if (rowCount < 2) {
         return;
     }
-    m_activeCategory = static_cast<FormatCategory>(current->data(RoleCategory).toInt());
+    const auto sortKey = static_cast<QueueSortKey>(m_sortCombo->currentData().toInt());
+
+    QVector<int> order(rowCount);
+    for (int i = 0; i < rowCount; ++i) {
+        order[i] = i;
+    }
+
+    std::stable_sort(order.begin(), order.end(), [this, sortKey](int a, int b) {
+        switch (sortKey) {
+            case QueueSortKey::NameAsc:
+                return m_queueTable->item(a, ColumnFile)->text().localeAwareCompare(
+                           m_queueTable->item(b, ColumnFile)->text()) < 0;
+            case QueueSortKey::NameDesc:
+                return m_queueTable->item(a, ColumnFile)->text().localeAwareCompare(
+                           m_queueTable->item(b, ColumnFile)->text()) > 0;
+            case QueueSortKey::Status:
+                return m_queueTable->item(a, ColumnStatus)->text() < m_queueTable->item(b, ColumnStatus)->text();
+            case QueueSortKey::Format:
+                return m_queueTable->item(a, ColumnFormat)->text() < m_queueTable->item(b, ColumnFormat)->text();
+            case QueueSortKey::InsertOrder:
+            default:
+                return m_queueTable->item(a, ColumnFile)->data(RoleInsertOrder).toInt() <
+                       m_queueTable->item(b, ColumnFile)->data(RoleInsertOrder).toInt();
+        }
+    });
+
+    // Detach every cell (by original row) before reinserting, so moving a row
+    // doesn't clobber items we haven't read yet.
+    QVector<QVector<QTableWidgetItem *>> rows;
+    rows.reserve(rowCount);
+    for (int row = 0; row < rowCount; ++row) {
+        QVector<QTableWidgetItem *> cells;
+        for (int col = 0; col < m_queueTable->columnCount(); ++col) {
+            cells << m_queueTable->takeItem(row, col);
+        }
+        rows << cells;
+    }
+    for (int newRow = 0; newRow < rowCount; ++newRow) {
+        const QVector<QTableWidgetItem *> &cells = rows[order[newRow]];
+        for (int col = 0; col < cells.size(); ++col) {
+            m_queueTable->setItem(newRow, col, cells[col]);
+        }
+    }
+
+    // The visual row order is also the JobManager processing order (see
+    // onQueueRowsMoved, which normally runs after a manual drag).
+    onQueueRowsMoved();
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent *event) {
@@ -464,10 +571,9 @@ void MainWindow::addInputFiles(const QStringList &paths) {
         const FormatCategory category = it.key();
         const QStringList &files = it.value();
 
-        for (int row = 0; row < m_sidebar->count(); ++row) {
-            QListWidgetItem *item = m_sidebar->item(row);
-            if (static_cast<FormatCategory>(item->data(RoleCategory).toInt()) == category) {
-                m_sidebar->setCurrentItem(item);
+        for (int i = 0; i < m_filterCombo->count(); ++i) {
+            if (static_cast<FormatCategory>(m_filterCombo->itemData(i).toInt()) == category) {
+                m_filterCombo->setCurrentIndex(i);
                 break;
             }
         }
@@ -675,6 +781,8 @@ void MainWindow::appendRow(ConversionJob *job) {
     m_queueTable->insertRow(row);
     auto *fileItem = new QTableWidgetItem(QFileInfo(job->inputPath()).fileName());
     fileItem->setData(RoleJobId, job->id());
+    fileItem->setData(RoleCategory, static_cast<int>(FormatRegistry::instance().categoryOf(job->sourceFormat())));
+    fileItem->setData(RoleInsertOrder, m_nextQueueOrder++);
     m_queueTable->setItem(row, ColumnFile, fileItem);
     m_queueTable->setItem(row, ColumnFormat, new QTableWidgetItem(job->targetFormat().toUpper()));
     m_queueTable->setItem(row, ColumnStatus, new QTableWidgetItem(magnify::core::jobStatusToString(job->status())));
@@ -683,6 +791,9 @@ void MainWindow::appendRow(ConversionJob *job) {
 
     connect(job, &ConversionJob::statusChanged, this, [this, job](magnify::core::JobStatus) { refreshRow(job); });
     connect(job, &ConversionJob::progressChanged, this, [this, job](int) { refreshRow(job); });
+
+    applyQueueSort();
+    applyQueueFilter();
 }
 
 void MainWindow::refreshRow(ConversionJob *job) {

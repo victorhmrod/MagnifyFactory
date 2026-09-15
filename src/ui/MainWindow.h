@@ -14,8 +14,6 @@ class QLineEdit;
 class QPushButton;
 class QLabel;
 class QSpinBox;
-class QListWidget;
-class QListWidgetItem;
 class QStackedWidget;
 class QCloseEvent;
 QT_END_NAMESPACE
@@ -32,7 +30,7 @@ namespace magnify::plugins { class PluginManager; }
 namespace magnify::ui {
 
 // Top-level window. Contains no conversion logic itself — it only translates
-// user actions (drag-and-drop, popup format selection, sidebar navigation)
+// user actions (drag-and-drop, popup format selection, filter/sort controls)
 // into JobManager calls, and reflects ConversionJob state back into the
 // queue table.
 class MainWindow : public QMainWindow {
@@ -67,7 +65,12 @@ private:
     void extractArchive(const QString &archivePath);
     void refreshRow(magnify::core::ConversionJob *job);
     void appendRow(magnify::core::ConversionJob *job);
-    void onCategorySelected(QListWidgetItem *current);
+    void onFilterCategoryChanged(int index);
+    // Hides queue rows whose job category doesn't match m_activeCategory.
+    void applyQueueFilter();
+    // Reorders queue rows according to m_sortCombo's current key, then syncs
+    // the new visual order back into JobManager's processing order.
+    void applyQueueSort();
     void updateStatusBar();
     void populateHardwareCombo();
     void onHardwareDetectionFinished();
@@ -95,7 +98,8 @@ private:
     std::unique_ptr<magnify::watch::WatchFolderManager> m_watchFolderManager;
     std::unique_ptr<magnify::plugins::PluginManager> m_pluginManager;
 
-    QListWidget *m_sidebar = nullptr;
+    QComboBox *m_filterCombo = nullptr;
+    QComboBox *m_sortCombo = nullptr;
     QTableWidget *m_queueTable = nullptr;
     QPushButton *m_startButton = nullptr;
     QPushButton *m_dropZoneButton = nullptr;
@@ -104,7 +108,11 @@ private:
     QLabel *m_statusJobsLabel = nullptr;
     QFutureWatcher<void> m_hardwareDetectionWatcher;
 
-    magnify::core::FormatCategory m_activeCategory = magnify::core::FormatCategory::Video;
+    // FormatCategory::Unknown doubles as "All Categories" for the filter
+    // combo — real queue rows never carry that category (unrecognized files
+    // are rejected before they can be enqueued).
+    magnify::core::FormatCategory m_activeCategory = magnify::core::FormatCategory::Unknown;
+    int m_nextQueueOrder = 0; // monotonic counter stamped on each row for the "Order added" sort key
     QString m_pendingHardwareBackend; // restored from settings, applied once the combo is fully populated
 };
 
